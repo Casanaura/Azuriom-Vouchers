@@ -177,11 +177,24 @@ class VoucherController extends Controller
                 'type' => $reward['type'],
                 'configuration' => match ($reward['type']) {
                     Reward::TYPE_MONEY => [
-                        'amount' => (float) $reward['amount'],
+                        'amount' => $this->normalizePointAmount($reward['amount']),
                     ],
                 },
                 'position' => $position,
             ])
             ->all();
+    }
+
+    /**
+     * Preserve an exact, canonical decimal representation for point rewards.
+     */
+    private function normalizePointAmount(mixed $amount): string
+    {
+        [$units, $decimals] = array_pad(explode('.', trim((string) $amount), 2), 2, '');
+        $units = ltrim($units, '0');
+        $units = $units === '' ? '0' : $units;
+        $decimals = rtrim($decimals, '0');
+
+        return $decimals === '' ? $units : $units.'.'.$decimals;
     }
 }

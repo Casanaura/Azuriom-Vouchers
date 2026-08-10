@@ -22,7 +22,7 @@ class VoucherModelTest extends TestCase
             'max_redemptions_per_user', 'starts_at', 'expires_at',
         ]));
         $this->assertTrue(Schema::hasColumns('vouchers_redemptions', [
-            'user_id', 'recipient_key', 'status',
+            'user_id', 'recipient_key', 'request_token', 'request_fingerprint', 'status',
         ]));
     }
 

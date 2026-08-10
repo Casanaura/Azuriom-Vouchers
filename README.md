@@ -26,8 +26,10 @@ Currently implemented:
 - Administration CRUD with generated or custom codes.
 - Date windows, global limits, per-user limits and authentication mode.
 - Multiple ordered Shop point rewards.
+- Public redemption for signed-in users or guests targeting an existing account.
+- Atomic point delivery with per-request idempotency.
 
-Public redemption and external reward delivery are still in development.
+Shop package and server-command rewards are still in development.
 
 ## Authors
 

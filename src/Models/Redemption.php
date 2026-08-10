@@ -10,6 +10,8 @@ use Illuminate\Support\Str;
 /**
  * @property int $id
  * @property string $uuid
+ * @property string|null $request_token
+ * @property string|null $request_fingerprint
  * @property int $voucher_id
  * @property int|null $user_id
  * @property int|null $redeemer_id
@@ -48,8 +50,17 @@ class Redemption extends Model
      * @var array<int, string>
      */
     protected $fillable = [
-        'voucher_id', 'user_id', 'redeemer_id', 'username',
+        'voucher_id', 'user_id', 'redeemer_id', 'username', 'request_token', 'request_fingerprint',
         'recipient_key', 'ip_address',
+    ];
+
+    /**
+     * The attributes that should be hidden for serialization.
+     *
+     * @var array<int, string>
+     */
+    protected $hidden = [
+        'request_token', 'request_fingerprint',
     ];
 
     /**
@@ -58,6 +69,9 @@ class Redemption extends Model
      * @var array<string, string>
      */
     protected $casts = [
+        'voucher_id' => 'integer',
+        'user_id' => 'integer',
+        'redeemer_id' => 'integer',
         'completed_at' => 'datetime',
     ];
 

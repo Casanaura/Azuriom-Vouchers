@@ -101,4 +101,18 @@ class RewardExecution extends Model
             self::STATUS_UNCERTAIN,
         ], true);
     }
+
+    /**
+     * Create an immutable execution snapshot from a reward definition.
+     */
+    public static function fromReward(Reward $reward): self
+    {
+        return (new self())->forceFill([
+            'reward_id' => $reward->getKey(),
+            'reward_uuid' => $reward->uuid,
+            'type' => $reward->type,
+            'configuration' => $reward->configuration,
+            'status' => self::STATUS_PENDING,
+        ]);
+    }
 }
