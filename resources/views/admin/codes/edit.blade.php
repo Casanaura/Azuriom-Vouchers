@@ -5,8 +5,10 @@
 @endsection
 
 @section('content')
-    @php($revisionValue = old('revision', $voucher->revision))
-    @php($revisionValue = is_scalar($revisionValue) ? $revisionValue : '')
+    @php
+        $revisionValue = old('revision', $voucher->revision);
+        $revisionValue = is_scalar($revisionValue) ? $revisionValue : '';
+    @endphp
     <form action="{{ route('vouchers.admin.codes.update', $voucher) }}" method="POST">
         @method('PUT')
         <input type="hidden" name="revision" value="{{ $revisionValue }}">

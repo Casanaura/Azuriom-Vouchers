@@ -87,7 +87,9 @@
                         </option>
                     @endif
                     @foreach($shopPackages->groupBy('category_id') as $categoryPackages)
-                        @php($category = $categoryPackages->first()->category)
+                        @php
+                            $category = $categoryPackages->first()->category;
+                        @endphp
                         <optgroup label="{{ $category?->name ?? trans('messages.unknown') }}">
                             @foreach($categoryPackages as $package)
                                 <option value="{{ $package->id }}" @selected($selectedPackageId === (int) $package->id)>

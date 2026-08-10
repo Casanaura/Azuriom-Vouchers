@@ -2,11 +2,11 @@
 
 @csrf
 
-@php($rewards = old('rewards', $formRewards))
-@php($rewards = is_array($rewards) ? $rewards : $formRewards)
-@php($rewards = array_filter($rewards, 'is_array'))
-@php($rewards = $rewards === [] ? $formRewards : $rewards)
 @php
+    $rewards = old('rewards', $formRewards);
+    $rewards = is_array($rewards) ? $rewards : $formRewards;
+    $rewards = array_filter($rewards, 'is_array');
+    $rewards = $rewards === [] ? $formRewards : $rewards;
     $hasUnavailableServer = collect($rewards)->contains(function ($reward) use ($servers) {
         $serverId = is_array($reward) ? filter_var($reward['server_id'] ?? null, FILTER_VALIDATE_INT) : false;
 

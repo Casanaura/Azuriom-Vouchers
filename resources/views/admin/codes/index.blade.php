@@ -32,7 +32,9 @@
                         </thead>
                         <tbody>
                             @foreach($vouchers as $voucher)
-                                @php($status = $voucher->availabilityStatusAt(now()))
+                                @php
+                                    $status = $voucher->availabilityStatusAt(now());
+                                @endphp
                                 <tr>
                                     <td>{{ $voucher->name }}</td>
                                     <td><code>{{ $voucher->code }}</code></td>
