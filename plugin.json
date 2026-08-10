@@ -9,6 +9,9 @@
         "Kissadere"
     ],
     "azuriom_api": "1.2.0",
+    "dependencies": {
+        "shop?": "^1.2.0"
+    },
     "providers": [
         "\\Azuriom\\Plugin\\Vouchers\\Providers\\VouchersServiceProvider",
         "\\Azuriom\\Plugin\\Vouchers\\Providers\\RouteServiceProvider"

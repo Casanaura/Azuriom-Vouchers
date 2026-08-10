@@ -3,7 +3,10 @@
 namespace Azuriom\Plugin\Vouchers\Providers;
 
 use Azuriom\Extensions\Plugin\BasePluginServiceProvider;
+use Azuriom\Models\ActionLog;
 use Azuriom\Models\Permission;
+use Azuriom\Plugin\Vouchers\Models\Reward;
+use Azuriom\Plugin\Vouchers\Models\Voucher;
 
 class VouchersServiceProvider extends BasePluginServiceProvider
 {
@@ -21,6 +24,11 @@ class VouchersServiceProvider extends BasePluginServiceProvider
         Permission::registerPermissions([
             'vouchers.admin' => 'vouchers::admin.permission',
         ]);
+
+        ActionLog::registerLogModels([
+            Voucher::class,
+            Reward::class,
+        ], 'vouchers::admin.logs');
     }
 
     /**

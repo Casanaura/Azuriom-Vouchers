@@ -6,5 +6,10 @@
         "psr-4": {
             "Azuriom\\Plugin\\Vouchers\\": "src/"
         }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Azuriom\\Plugin\\Vouchers\\Tests\\": "tests/"
+        }
     }
 }
