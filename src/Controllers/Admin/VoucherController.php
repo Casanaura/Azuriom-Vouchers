@@ -6,6 +6,7 @@ use Azuriom\Http\Controllers\Controller;
 use Azuriom\Plugin\Vouchers\Models\Reward;
 use Azuriom\Plugin\Vouchers\Models\Voucher;
 use Azuriom\Plugin\Vouchers\Requests\VoucherRequest;
+use Azuriom\Plugin\Vouchers\Services\ShopPackageCatalog;
 use Azuriom\Plugin\Vouchers\Services\VoucherCodeGenerator;
 use Illuminate\Contracts\View\View;
 use Illuminate\Database\UniqueConstraintViolationException;
@@ -14,6 +15,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
+use UnexpectedValueException;
 
 class VoucherController extends Controller
 {
@@ -35,7 +37,7 @@ class VoucherController extends Controller
     /**
      * Show the voucher creation form.
      */
-    public function create(VoucherCodeGenerator $generator): View
+    public function create(VoucherCodeGenerator $generator, ShopPackageCatalog $shopPackages): View
     {
         return view('vouchers::admin.codes.create', [
             'voucher' => new Voucher([
@@ -47,6 +49,8 @@ class VoucherController extends Controller
                 'type' => Reward::TYPE_MONEY,
                 'amount' => '',
             ]],
+            'shopAvailable' => $shopPackages->isAvailable(),
+            'shopPackages' => $shopPackages->packages(),
         ]);
     }
 
@@ -55,20 +59,24 @@ class VoucherController extends Controller
      *
      * @throws \Illuminate\Validation\ValidationException
      */
-    public function store(VoucherRequest $request): RedirectResponse
+    public function store(VoucherRequest $request, ShopPackageCatalog $shopPackages): RedirectResponse
     {
         try {
-            DB::transaction(function () use ($request) {
+            DB::transaction(function () use ($request, $shopPackages) {
                 $data = $request->validated();
                 $rewards = Arr::pull($data, 'rewards');
                 Arr::forget($data, 'revision');
                 $voucher = Voucher::create($data);
 
-                $voucher->rewards()->createMany($this->mapRewards($rewards));
+                $voucher->rewards()->createMany($this->mapRewards($rewards, $shopPackages));
             }, 3);
         } catch (UniqueConstraintViolationException) {
             throw ValidationException::withMessages([
                 'code' => trans('vouchers::admin.validation.code_unique'),
+            ]);
+        } catch (UnexpectedValueException) {
+            throw ValidationException::withMessages([
+                'rewards' => trans('vouchers::admin.validation.package_unavailable'),
             ]);
         }
 
@@ -79,7 +87,7 @@ class VoucherController extends Controller
     /**
      * Show the voucher editing form.
      */
-    public function edit(Voucher $voucher): View
+    public function edit(Voucher $voucher, ShopPackageCatalog $shopPackages): View
     {
         $voucher->load('rewards');
 
@@ -89,6 +97,8 @@ class VoucherController extends Controller
                 'type' => $reward->type,
                 ...$reward->configuration,
             ])->all(),
+            'shopAvailable' => $shopPackages->isAvailable(),
+            'shopPackages' => $shopPackages->packages(),
         ]);
     }
 
@@ -97,10 +107,13 @@ class VoucherController extends Controller
      *
      * @throws \Illuminate\Validation\ValidationException
      */
-    public function update(VoucherRequest $request, Voucher $voucher): RedirectResponse
-    {
+    public function update(
+        VoucherRequest $request,
+        Voucher $voucher,
+        ShopPackageCatalog $shopPackages,
+    ): RedirectResponse {
         try {
-            DB::transaction(function () use ($request, $voucher) {
+            DB::transaction(function () use ($request, $voucher, $shopPackages) {
                 $lockedVoucher = Voucher::query()->lockForUpdate()->findOrFail($voucher->getKey());
                 $data = $request->validated();
                 $rewards = Arr::pull($data, 'rewards');
@@ -117,16 +130,42 @@ class VoucherController extends Controller
                     'revision' => $revision + 1,
                 ])->save();
                 $lockedVoucher->rewards()->delete();
-                $lockedVoucher->rewards()->createMany($this->mapRewards($rewards));
+                $lockedVoucher->rewards()->createMany($this->mapRewards($rewards, $shopPackages));
             }, 3);
         } catch (UniqueConstraintViolationException) {
             throw ValidationException::withMessages([
                 'code' => trans('vouchers::admin.validation.code_unique'),
             ]);
+        } catch (UnexpectedValueException) {
+            throw ValidationException::withMessages([
+                'rewards' => trans('vouchers::admin.validation.package_unavailable'),
+            ]);
         }
 
         return to_route('vouchers.admin.codes.index')
             ->with('success', trans('vouchers::admin.codes.updated'));
+    }
+
+    /**
+     * Disable a voucher without rewriting integrations which may be offline.
+     */
+    public function disable(Voucher $voucher): RedirectResponse
+    {
+        DB::transaction(function () use ($voucher) {
+            $lockedVoucher = Voucher::query()->lockForUpdate()->findOrFail($voucher->getKey());
+
+            if (! $lockedVoucher->is_enabled) {
+                return;
+            }
+
+            $lockedVoucher->forceFill([
+                'is_enabled' => false,
+                'revision' => $lockedVoucher->revision + 1,
+            ])->save();
+        }, 3);
+
+        return to_route('vouchers.admin.codes.index')
+            ->with('success', trans('vouchers::admin.codes.disabled'));
     }
 
     /**
@@ -169,7 +208,7 @@ class VoucherController extends Controller
      * @param  array<int, array<string, mixed>>  $rewards
      * @return array<int, array<string, mixed>>
      */
-    private function mapRewards(array $rewards): array
+    private function mapRewards(array $rewards, ShopPackageCatalog $shopPackages): array
     {
         return collect($rewards)
             ->values()
@@ -179,6 +218,7 @@ class VoucherController extends Controller
                     Reward::TYPE_MONEY => [
                         'amount' => $this->normalizePointAmount($reward['amount']),
                     ],
+                    Reward::TYPE_SHOP_PACKAGE => $shopPackages->configuration((int) $reward['package_id']),
                 },
                 'position' => $position,
             ])

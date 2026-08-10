@@ -6,6 +6,7 @@ return [
     'logged_as' => 'The rewards will be granted to your signed-in account: :user.',
     'redeemed' => 'The voucher was redeemed successfully for :user.',
     'redeemed_guest' => 'The voucher was redeemed successfully for the requested account.',
+    'delivery_processing' => 'The voucher was reserved and its rewards are still processing. Reference: :reference.',
     'delivery_issue' => 'The voucher was reserved, but at least one reward needs staff review. Reference: :reference.',
 
     'fields' => [

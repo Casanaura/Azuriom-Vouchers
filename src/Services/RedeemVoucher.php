@@ -38,11 +38,13 @@ class RedeemVoucher
         $existing = Redemption::query()->firstWhere('request_token', $requestToken);
 
         if ($existing !== null) {
-            return $this->existingRedemption($existing, $authenticatedUser, $requestFingerprints);
+            $redemption = $this->existingRedemption($existing, $authenticatedUser, $requestFingerprints);
+
+            return $this->delivery->deliverDeferred($redemption);
         }
 
         try {
-            return DB::transaction(function () use (
+            $redemption = DB::transaction(function () use (
                 $code,
                 $authenticatedUser,
                 $recipientIdentifier,
@@ -99,6 +101,7 @@ class RedeemVoucher
                 foreach ($voucher->rewards as $reward) {
                     $execution = RewardExecution::fromReward($reward);
                     $redemption->executions()->save($execution);
+                    $this->delivery->prepare($execution, $redemption, $recipient);
                     $this->delivery->deliverTransactional($execution, $recipient);
                 }
 
@@ -114,7 +117,7 @@ class RedeemVoucher
                 throw $exception;
             }
 
-            return $this->existingRedemption($existing, $authenticatedUser, $requestFingerprints);
+            $redemption = $this->existingRedemption($existing, $authenticatedUser, $requestFingerprints);
         } catch (UnexpectedValueException $exception) {
             report($exception);
 
@@ -122,6 +125,8 @@ class RedeemVoucher
         } catch (ModelNotFoundException) {
             throw new VoucherRedemptionException(VoucherRedemptionException::RECIPIENT_NOT_FOUND);
         }
+
+        return $this->delivery->deliverDeferred($redemption);
     }
 
     /**

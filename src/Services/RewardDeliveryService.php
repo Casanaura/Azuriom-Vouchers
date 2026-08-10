@@ -10,8 +10,32 @@ use UnexpectedValueException;
 
 class RewardDeliveryService
 {
-    public function __construct(private readonly PointRewardService $points)
-    {
+    public function __construct(
+        private readonly PointRewardService $points,
+        private readonly ShopPackageRewardService $shopPackages,
+        private readonly RedemptionStatusService $redemptionStatuses,
+    ) {
+    }
+
+    /**
+     * Prepare external records within the atomic voucher reservation.
+     */
+    public function prepare(
+        RewardExecution $execution,
+        Redemption $redemption,
+        User $recipient,
+    ): void {
+        if ($execution->type === Reward::TYPE_MONEY) {
+            return;
+        }
+
+        if ($execution->type === Reward::TYPE_SHOP_PACKAGE) {
+            $this->shopPackages->prepare($execution, $redemption, $recipient);
+
+            return;
+        }
+
+        throw new UnexpectedValueException('The voucher reward type is not available for redemption.');
     }
 
     /**
@@ -25,7 +49,41 @@ class RewardDeliveryService
             return;
         }
 
-        throw new UnexpectedValueException('The voucher reward type is not available for redemption.');
+        if ($execution->type !== Reward::TYPE_SHOP_PACKAGE) {
+            throw new UnexpectedValueException('The voucher reward type is not available for redemption.');
+        }
+    }
+
+    /**
+     * Deliver every pending external reward after the reservation commits.
+     */
+    public function deliverDeferred(Redemption $redemption): Redemption
+    {
+        $cutoff = now()->subMinutes(10);
+
+        $redemption->executions()
+            ->where('type', Reward::TYPE_SHOP_PACKAGE)
+            ->where('status', RewardExecution::STATUS_PROCESSING)
+            ->where(function ($query) use ($cutoff) {
+                $query->whereNull('started_at')->orWhere('started_at', '<=', $cutoff);
+            })
+            ->orderBy('id')
+            ->get()
+            ->each(fn (RewardExecution $execution) => $this->shopPackages->reconcileStale($execution, $cutoff));
+
+        $redemption->executions()
+            ->where('status', RewardExecution::STATUS_PENDING)
+            ->orderBy('id')
+            ->get()
+            ->each(function (RewardExecution $execution) {
+                if ($execution->type === Reward::TYPE_SHOP_PACKAGE) {
+                    $this->shopPackages->deliver($execution);
+                }
+            });
+
+        $this->refreshRedemptionStatus($redemption);
+
+        return $redemption->fresh(['executions', 'user']);
     }
 
     /**
@@ -33,33 +91,6 @@ class RewardDeliveryService
      */
     public function refreshRedemptionStatus(Redemption $redemption): void
     {
-        $statuses = $redemption->executions()->pluck('status');
-        $hasPending = $statuses->contains(fn (string $status) => in_array($status, [
-            RewardExecution::STATUS_PENDING,
-            RewardExecution::STATUS_PROCESSING,
-        ], true));
-        $successful = $statuses->filter(fn (string $status) => in_array($status, [
-            RewardExecution::STATUS_SUCCEEDED,
-            RewardExecution::STATUS_DISPATCHED,
-        ], true))->count();
-
-        if ($hasPending) {
-            $status = Redemption::STATUS_PROCESSING;
-            $completedAt = null;
-        } elseif ($successful === $statuses->count()) {
-            $status = Redemption::STATUS_COMPLETED;
-            $completedAt = now();
-        } elseif ($successful > 0) {
-            $status = Redemption::STATUS_PARTIAL;
-            $completedAt = now();
-        } else {
-            $status = Redemption::STATUS_FAILED;
-            $completedAt = now();
-        }
-
-        $redemption->forceFill([
-            'status' => $status,
-            'completed_at' => $completedAt,
-        ])->save();
+        $this->redemptionStatuses->refresh($redemption);
     }
 }

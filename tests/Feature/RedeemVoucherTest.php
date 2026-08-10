@@ -3,15 +3,21 @@
 namespace Azuriom\Plugin\Vouchers\Tests\Feature;
 
 use Azuriom\Models\User;
+use Azuriom\Plugin\Shop\Events\PackageDelivered;
+use Azuriom\Plugin\Shop\Events\PaymentPaid;
+use Azuriom\Plugin\Shop\Models\Payment;
+use Azuriom\Plugin\Shop\Models\PaymentItem;
 use Azuriom\Plugin\Vouchers\Exceptions\VoucherRedemptionException;
 use Azuriom\Plugin\Vouchers\Models\Redemption;
 use Azuriom\Plugin\Vouchers\Models\Reward;
 use Azuriom\Plugin\Vouchers\Models\RewardExecution;
 use Azuriom\Plugin\Vouchers\Models\Voucher;
 use Azuriom\Plugin\Vouchers\Services\RedeemVoucher;
+use Azuriom\Plugin\Vouchers\Services\ShopPackageRewardService;
 use Azuriom\Plugin\Vouchers\Tests\TestCase;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Str;
 
 class RedeemVoucherTest extends TestCase
@@ -28,12 +34,14 @@ class RedeemVoucherTest extends TestCase
         $service = app(RedeemVoucher::class);
 
         $first = $service->redeem('welcome-2026', $user, null, $token, '127.0.0.1');
+        $completedAt = $first->completed_at?->toISOString();
         $repeated = $service->redeem('welcome-2026', $user, null, $token, '127.0.0.1');
 
         $this->assertSame($first->id, $repeated->id);
         $this->assertSame(Redemption::STATUS_COMPLETED, $first->status);
         $this->assertSame(125.5, $user->fresh()->money);
         $this->assertSame(1, $voucher->fresh()->redemptions_count);
+        $this->assertSame($completedAt, $repeated->completed_at?->toISOString());
         $this->assertCount(2, $first->executions);
         $this->assertTrue($first->executions->every(
             fn (RewardExecution $execution) => $execution->status === RewardExecution::STATUS_SUCCEEDED
@@ -88,6 +96,178 @@ class RedeemVoucherTest extends TestCase
 
         $this->assertSame(Redemption::STATUS_COMPLETED, $redemption->status);
         $this->assertSame(123456789.12, $user->fresh()->money);
+    }
+
+    public function test_an_unavailable_shop_reward_rolls_back_the_reservation(): void
+    {
+        $user = $this->createUser();
+        $voucher = $this->createVoucher(maxPerUser: 1);
+        $voucher->rewards()->create([
+            'type' => Reward::TYPE_SHOP_PACKAGE,
+            'configuration' => ['package_id' => 1, 'package_name' => 'Unavailable'],
+            'position' => 0,
+        ]);
+
+        try {
+            app(RedeemVoucher::class)->redeem(
+                'welcome-2026',
+                $user,
+                null,
+                (string) Str::uuid(),
+                '127.0.0.1',
+            );
+            $this->fail('The unavailable Shop reward did not abort the reservation.');
+        } catch (VoucherRedemptionException $exception) {
+            $this->assertSame(VoucherRedemptionException::INVALID_CONFIGURATION, $exception->reason);
+        }
+
+        $this->assertSame(0, $voucher->fresh()->redemptions_count);
+        $this->assertSame(0, Redemption::query()->count());
+        $this->assertSame(0, RewardExecution::query()->count());
+    }
+
+    public function test_shop_package_uses_the_payment_contract_and_is_idempotent(): void
+    {
+        $this->enableShopIntegration();
+        $user = $this->createUser();
+        $package = $this->createShopPackage(20);
+        $voucher = $this->createVoucher(maxPerUser: 2);
+        $voucher->rewards()->createMany([
+            ['type' => Reward::TYPE_MONEY, 'configuration' => ['amount' => 10], 'position' => 0],
+            [
+                'type' => Reward::TYPE_SHOP_PACKAGE,
+                'configuration' => ['package_id' => $package->id, 'package_name' => $package->name],
+                'position' => 1,
+            ],
+        ]);
+        $token = (string) Str::uuid();
+        $paymentsPaid = 0;
+        $packagesDelivered = 0;
+        Event::listen(PaymentPaid::class, function () use (&$paymentsPaid) {
+            $paymentsPaid++;
+        });
+        Event::listen(PackageDelivered::class, function () use (&$packagesDelivered) {
+            $packagesDelivered++;
+        });
+
+        $first = app(RedeemVoucher::class)->redeem(
+            'welcome-2026',
+            $user,
+            null,
+            $token,
+            '127.0.0.1',
+        );
+        $repeated = app(RedeemVoucher::class)->redeem(
+            'welcome-2026',
+            $user,
+            null,
+            $token,
+            '127.0.0.1',
+        );
+
+        $shopExecution = $first->executions->firstWhere('type', Reward::TYPE_SHOP_PACKAGE);
+        $payment = Payment::query()->sole();
+        $item = PaymentItem::query()->sole();
+
+        $this->assertSame($first->id, $repeated->id);
+        $this->assertSame(Redemption::STATUS_COMPLETED, $first->status);
+        $this->assertSame(30.0, $user->fresh()->money);
+        $this->assertSame('completed', $payment->status);
+        $this->assertSame('manual', $payment->gateway_type);
+        $this->assertSame('shop.packages', $item->buyable_type);
+        $this->assertSame($package->id, $item->buyable_id);
+        $this->assertSame(RewardExecution::STATUS_SUCCEEDED, $shopExecution->status);
+        $this->assertSame(1, $shopExecution->attempts);
+        $this->assertSame(1, $paymentsPaid);
+        $this->assertSame(1, $packagesDelivered);
+        $this->assertSame(1, Payment::query()->count());
+        $this->assertSame(1, PaymentItem::query()->count());
+    }
+
+    public function test_shop_failure_after_the_delivery_boundary_is_never_retried(): void
+    {
+        $this->enableShopIntegration();
+        $user = $this->createUser();
+        $package = $this->createShopPackage(7, 'Uncertain package');
+        $voucher = $this->createVoucher(maxPerUser: 2);
+        $voucher->rewards()->create([
+            'type' => Reward::TYPE_SHOP_PACKAGE,
+            'configuration' => ['package_id' => $package->id, 'package_name' => $package->name],
+            'position' => 0,
+        ]);
+        $token = (string) Str::uuid();
+        $attempts = 0;
+        Event::listen(PackageDelivered::class, function (PackageDelivered $event) use ($package, &$attempts) {
+            if ($event->package->is($package)) {
+                $attempts++;
+
+                throw new \RuntimeException('Failure after the package side effect.');
+            }
+        });
+
+        $first = app(RedeemVoucher::class)->redeem(
+            'welcome-2026',
+            $user,
+            null,
+            $token,
+            '127.0.0.1',
+        );
+        $repeated = app(RedeemVoucher::class)->redeem(
+            'welcome-2026',
+            $user,
+            null,
+            $token,
+            '127.0.0.1',
+        );
+        $execution = $first->executions->sole();
+
+        $this->assertSame($first->id, $repeated->id);
+        $this->assertSame(Redemption::STATUS_REVIEW_REQUIRED, $first->status);
+        $this->assertSame(RewardExecution::STATUS_UNCERTAIN, $execution->status);
+        $this->assertSame(1, $execution->attempts);
+        $this->assertSame(1, $attempts);
+        $this->assertSame(7.0, $user->fresh()->money);
+        $this->assertSame('completed', Payment::query()->sole()->status);
+        $this->assertSame(1, Payment::query()->count());
+        $this->assertSame(1, PaymentItem::query()->count());
+    }
+
+    public function test_an_interrupted_shop_claim_without_a_start_time_requires_review(): void
+    {
+        $this->enableShopIntegration();
+        $user = $this->createUser();
+        $package = $this->createShopPackage(3, 'Interrupted package');
+        $voucher = $this->createVoucher(maxPerUser: 1);
+        $reward = $voucher->rewards()->create([
+            'type' => Reward::TYPE_SHOP_PACKAGE,
+            'configuration' => ['package_id' => $package->id, 'package_name' => $package->name],
+            'position' => 0,
+        ]);
+        $redemption = $voucher->redemptions()->create([
+            'user_id' => $user->id,
+            'redeemer_id' => $user->id,
+            'username' => $user->name,
+            'recipient_key' => Redemption::recipientKey($user),
+            'status' => Redemption::STATUS_PROCESSING,
+        ]);
+        $execution = RewardExecution::fromReward($reward);
+        $redemption->executions()->save($execution);
+        $service = app(ShopPackageRewardService::class);
+
+        DB::transaction(function () use ($service, $execution, $redemption, $user) {
+            $service->prepare($execution, $redemption, $user);
+        });
+        $execution->forceFill([
+            'status' => RewardExecution::STATUS_PROCESSING,
+            'attempts' => 1,
+            'started_at' => null,
+        ])->save();
+
+        $this->assertTrue($service->reconcileStale($execution->fresh(), now()->subMinutes(10)));
+        $this->assertSame(RewardExecution::STATUS_UNCERTAIN, $execution->fresh()->status);
+        $this->assertSame(Redemption::STATUS_REVIEW_REQUIRED, $redemption->fresh()->status);
+        $this->assertSame('error', Payment::query()->sole()->status);
+        $this->assertSame(0.0, $user->fresh()->money);
     }
 
     public function test_per_user_limit_rejects_a_new_redemption_request(): void

@@ -3,6 +3,7 @@
 namespace Azuriom\Plugin\Vouchers\Tests\Feature;
 
 use Azuriom\Plugin\Vouchers\Models\Voucher;
+use Azuriom\Plugin\Vouchers\Services\ShopPackageCatalog;
 use Azuriom\Plugin\Vouchers\Services\VoucherCodeGenerator;
 use Azuriom\Plugin\Vouchers\Tests\TestCase;
 use Carbon\CarbonImmutable;
@@ -23,6 +24,9 @@ class VoucherModelTest extends TestCase
         ]));
         $this->assertTrue(Schema::hasColumns('vouchers_redemptions', [
             'user_id', 'recipient_key', 'request_token', 'request_fingerprint', 'status',
+        ]));
+        $this->assertTrue(Schema::hasColumns('vouchers_reward_executions', [
+            'attempts', 'external_reference', 'status', 'error',
         ]));
     }
 
@@ -87,5 +91,14 @@ class VoucherModelTest extends TestCase
 
         $this->assertMatchesRegularExpression('/^[A-HJ-NP-Z2-9]{4}(?:-[A-HJ-NP-Z2-9]{4}){3}$/', $first);
         $this->assertNotSame($first, $second);
+    }
+
+    public function test_shop_catalog_is_safely_empty_when_the_optional_plugin_is_unavailable(): void
+    {
+        $catalog = app(ShopPackageCatalog::class);
+
+        $this->assertFalse($catalog->isAvailable());
+        $this->assertTrue($catalog->packages()->isEmpty());
+        $this->assertTrue($catalog->eligibleIds([1, 2])->isEmpty());
     }
 }

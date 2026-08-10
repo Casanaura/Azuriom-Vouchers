@@ -12,6 +12,7 @@ return [
         'empty' => 'Todavía no se ha creado ningún código de canje.',
         'created' => 'El código de canje fue creado.',
         'updated' => 'El código de canje fue actualizado.',
+        'disabled' => 'El código de canje fue desactivado.',
         'deleted' => 'El código de canje fue eliminado.',
         'delete_has_redemptions' => 'No se puede eliminar un código con historial de canjes. Desactívalo en su lugar.',
     ],
@@ -35,21 +36,32 @@ return [
         'max_redemptions' => 'Usa 1 para un código de un solo uso o déjalo vacío para permitir canjes ilimitados.',
         'max_redemptions_per_user' => 'Usa 1 para impedir que la misma cuenta canjee este código más de una vez. Déjalo vacío para permitir canjes ilimitados por cuenta.',
         'requires_authentication' => 'Si se desactiva, los invitados deberán indicar el nombre de una cuenta existente en Azuriom.',
+        'shop_package' => 'Se excluyen suscripciones, paquetes con variables obligatorias y giftcards de valor dinámico. Los paquetes deshabilitados siguen disponibles como recompensas ocultas.',
     ],
 
     'actions' => [
         'generate' => 'Generar',
+        'disable' => 'Desactivar',
     ],
 
     'rewards' => [
         'title' => 'Recompensas',
-        'description' => 'Todas las recompensas se entregarán en el orden indicado.',
+        'description' => 'Se entregarán todas las recompensas. Las recompensas externas se procesan después de reservar el voucher.',
         'add' => 'Agregar recompensa',
         'reward' => 'Recompensa',
         'type' => 'Tipo de recompensa',
         'amount' => 'Puntos',
+        'package' => 'Paquete / producto de Shop',
+        'select_package' => 'Selecciona un paquete',
+        'package_unavailable' => 'no disponible',
+        'package_disabled' => 'deshabilitado',
+        'shop_unavailable' => 'Shop no disponible',
+        'shop_unavailable_help' => 'Este voucher contiene una recompensa de Shop, pero Shop no está habilitado. Habilita Shop o reemplaza la recompensa antes de guardar.',
+        'unsupported_type' => 'Tipo no compatible: :type',
+        'unsupported_type_unknown' => 'Tipo no compatible',
         'types' => [
             'money' => 'Puntos de Shop',
+            'shop_package' => 'Paquete / producto de Shop',
         ],
     ],
 
@@ -66,6 +78,7 @@ return [
         'code_unique' => 'Este código de canje ya está en uso.',
         'expires_after_start' => 'La fecha de finalización debe ser posterior a la fecha de inicio.',
         'stale_revision' => 'Otro administrador modificó este código. Recarga la página y revisa sus cambios antes de guardar de nuevo.',
+        'package_unavailable' => 'El paquete de Shop seleccionado no está disponible o requiere datos no compatibles.',
     ],
 
     'errors' => [

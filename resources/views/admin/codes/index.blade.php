@@ -50,6 +50,15 @@
                                         <a href="{{ route('vouchers.admin.codes.edit', $voucher) }}" class="m-1" title="{{ trans('messages.actions.edit') }}" aria-label="{{ trans('messages.actions.edit') }}" data-bs-toggle="tooltip">
                                             <i class="bi bi-pencil-square"></i>
                                         </a>
+                                        @if($voucher->is_enabled)
+                                            <form action="{{ route('vouchers.admin.codes.disable', $voucher) }}" method="POST" class="d-inline">
+                                                @csrf
+                                                @method('PATCH')
+                                                <button type="submit" class="btn btn-link link-warning m-1 p-0 align-baseline" title="{{ trans('vouchers::admin.actions.disable') }}" aria-label="{{ trans('vouchers::admin.actions.disable') }}" data-bs-toggle="tooltip">
+                                                    <i class="bi bi-pause-circle"></i>
+                                                </button>
+                                            </form>
+                                        @endif
                                         <a href="{{ route('vouchers.admin.codes.destroy', $voucher) }}" class="m-1" title="{{ trans('messages.actions.delete') }}" aria-label="{{ trans('messages.actions.delete') }}" data-bs-toggle="tooltip" data-confirm="delete">
                                             <i class="bi bi-trash"></i>
                                         </a>

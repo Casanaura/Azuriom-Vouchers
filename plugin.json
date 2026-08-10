@@ -10,7 +10,7 @@
     ],
     "azuriom_api": "1.2.0",
     "dependencies": {
-        "shop?": "^1.2.0"
+        "shop?": "^1.2.25"
     },
     "providers": [
         "\\Azuriom\\Plugin\\Vouchers\\Providers\\VouchersServiceProvider",

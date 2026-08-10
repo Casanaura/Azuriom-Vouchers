@@ -12,6 +12,7 @@ return [
         'empty' => 'No voucher codes have been created yet.',
         'created' => 'The voucher code has been created.',
         'updated' => 'The voucher code has been updated.',
+        'disabled' => 'The voucher code has been disabled.',
         'deleted' => 'The voucher code has been deleted.',
         'delete_has_redemptions' => 'A voucher with redemption history cannot be deleted. Disable it instead.',
     ],
@@ -35,21 +36,32 @@ return [
         'max_redemptions' => 'Use 1 for a single-use code, or leave blank for unlimited redemptions.',
         'max_redemptions_per_user' => 'Use 1 to prevent the same account from redeeming this code more than once. Leave blank for unlimited redemptions per account.',
         'requires_authentication' => 'When disabled, guests must provide the name of an existing Azuriom account.',
+        'shop_package' => 'Subscriptions, packages with required variables and dynamic-value gift cards are excluded. Disabled packages remain available as hidden rewards.',
     ],
 
     'actions' => [
         'generate' => 'Generate',
+        'disable' => 'Disable',
     ],
 
     'rewards' => [
         'title' => 'Rewards',
-        'description' => 'Every listed reward will be granted in this order.',
+        'description' => 'Every listed reward will be granted. External rewards are processed after the voucher is reserved.',
         'add' => 'Add reward',
         'reward' => 'Reward',
         'type' => 'Reward type',
         'amount' => 'Points',
+        'package' => 'Shop package / product',
+        'select_package' => 'Select a package',
+        'package_unavailable' => 'unavailable',
+        'package_disabled' => 'disabled',
+        'shop_unavailable' => 'Shop unavailable',
+        'shop_unavailable_help' => 'This voucher contains a Shop reward, but Shop is not enabled. Enable Shop or replace the reward before saving.',
+        'unsupported_type' => 'Unsupported type: :type',
+        'unsupported_type_unknown' => 'Unsupported type',
         'types' => [
             'money' => 'Shop points',
+            'shop_package' => 'Shop package / product',
         ],
     ],
 
@@ -66,6 +78,7 @@ return [
         'code_unique' => 'This voucher code is already in use.',
         'expires_after_start' => 'The end date must be later than the start date.',
         'stale_revision' => 'This voucher was changed by another administrator. Reload the page and review their changes before saving again.',
+        'package_unavailable' => 'The selected Shop package is unavailable or requires unsupported input.',
     ],
 
     'errors' => [

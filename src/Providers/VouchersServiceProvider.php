@@ -5,8 +5,10 @@ namespace Azuriom\Plugin\Vouchers\Providers;
 use Azuriom\Extensions\Plugin\BasePluginServiceProvider;
 use Azuriom\Models\ActionLog;
 use Azuriom\Models\Permission;
+use Azuriom\Plugin\Vouchers\Commands\ProcessDeliveriesCommand;
 use Azuriom\Plugin\Vouchers\Models\Reward;
 use Azuriom\Plugin\Vouchers\Models\Voucher;
+use Illuminate\Console\Scheduling\Schedule;
 
 class VouchersServiceProvider extends BasePluginServiceProvider
 {
@@ -20,6 +22,9 @@ class VouchersServiceProvider extends BasePluginServiceProvider
         $this->loadMigrations();
         $this->registerRouteDescriptions();
         $this->registerAdminNavigation();
+        $this->registerSchedule();
+
+        $this->commands(ProcessDeliveriesCommand::class);
 
         Permission::registerPermissions([
             'vouchers.admin' => 'vouchers::admin.permission',
@@ -29,6 +34,16 @@ class VouchersServiceProvider extends BasePluginServiceProvider
             Voucher::class,
             Reward::class,
         ], 'vouchers::admin.logs');
+    }
+
+    /**
+     * Process deferred rewards and close abandoned delivery claims.
+     */
+    protected function schedule(Schedule $schedule): void
+    {
+        $schedule->command('vouchers:deliveries')
+            ->everyFiveMinutes()
+            ->withoutOverlapping(15);
     }
 
     /**

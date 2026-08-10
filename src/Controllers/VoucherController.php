@@ -53,6 +53,12 @@ class VoucherController extends Controller
                 ->withInput($request->only('username'));
         }
 
+        if ($redemption->status === Redemption::STATUS_PROCESSING) {
+            return to_route('vouchers.index')->with('warning', trans('vouchers::messages.delivery_processing', [
+                'reference' => Str::upper(Str::substr($redemption->uuid, 0, 8)),
+            ]));
+        }
+
         if ($redemption->status !== Redemption::STATUS_COMPLETED) {
             return to_route('vouchers.index')->with('error', trans('vouchers::messages.delivery_issue', [
                 'reference' => Str::upper(Str::substr($redemption->uuid, 0, 8)),

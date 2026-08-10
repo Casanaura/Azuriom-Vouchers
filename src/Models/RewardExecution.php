@@ -13,6 +13,8 @@ use Illuminate\Database\Eloquent\Model;
  * @property string $type
  * @property array $configuration
  * @property string $status
+ * @property int $attempts
+ * @property string|null $external_reference
  * @property string|null $error
  * @property \Carbon\Carbon|null $started_at
  * @property \Carbon\Carbon|null $finished_at
@@ -58,6 +60,7 @@ class RewardExecution extends Model
      */
     protected $casts = [
         'configuration' => 'array',
+        'attempts' => 'integer',
         'started_at' => 'datetime',
         'finished_at' => 'datetime',
     ];

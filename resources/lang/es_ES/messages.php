@@ -6,6 +6,7 @@ return [
     'logged_as' => 'Las recompensas se entregarán a la cuenta con la sesión iniciada: :user.',
     'redeemed' => 'El código fue canjeado correctamente para :user.',
     'redeemed_guest' => 'El código fue canjeado correctamente para la cuenta indicada.',
+    'delivery_processing' => 'El código fue reservado y sus recompensas siguen procesándose. Referencia: :reference.',
     'delivery_issue' => 'El código fue reservado, pero al menos una recompensa requiere revisión del equipo. Referencia: :reference.',
 
     'fields' => [

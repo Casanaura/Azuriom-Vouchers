@@ -37,6 +37,8 @@ class Redemption extends Model
 
     public const STATUS_PARTIAL = 'partial';
 
+    public const STATUS_REVIEW_REQUIRED = 'review_required';
+
     public const STATUS_FAILED = 'failed';
 
     /**

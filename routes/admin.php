@@ -10,6 +10,7 @@ Route::middleware('can:vouchers.admin')->group(function () {
     Route::post('/', [VoucherController::class, 'store'])->name('codes.store');
     Route::post('/generate', [VoucherController::class, 'generate'])->name('codes.generate');
     Route::get('/{voucher}/edit', [VoucherController::class, 'edit'])->name('codes.edit');
+    Route::patch('/{voucher}/disable', [VoucherController::class, 'disable'])->name('codes.disable');
     Route::put('/{voucher}', [VoucherController::class, 'update'])->name('codes.update');
     Route::delete('/{voucher}', [VoucherController::class, 'destroy'])->name('codes.destroy');
 });
