@@ -20,6 +20,15 @@ Vouchers is an Azuriom plugin for creating redeemable codes and granting one or 
 
 The plugin is under active development and is not ready for production use yet.
 
+Currently implemented:
+
+- Secure voucher persistence and reward execution ledger.
+- Administration CRUD with generated or custom codes.
+- Date windows, global limits, per-user limits and authentication mode.
+- Multiple ordered Shop point rewards.
+
+Public redemption and external reward delivery are still in development.
+
 ## Authors
 
 - Zibuu

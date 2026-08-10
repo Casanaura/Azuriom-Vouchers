@@ -18,7 +18,7 @@ class VoucherModelTest extends TestCase
         $this->assertTrue(Schema::hasTable('vouchers_redemptions'));
         $this->assertTrue(Schema::hasTable('vouchers_reward_executions'));
         $this->assertTrue(Schema::hasColumns('vouchers_codes', [
-            'code_hash', 'requires_authentication', 'max_redemptions',
+            'code_hash', 'requires_authentication', 'max_redemptions', 'revision',
             'max_redemptions_per_user', 'starts_at', 'expires_at',
         ]));
         $this->assertTrue(Schema::hasColumns('vouchers_redemptions', [
@@ -57,12 +57,20 @@ class VoucherModelTest extends TestCase
 
         $this->assertTrue($voucher->isAvailableAt($date));
         $this->assertTrue($voucher->hasRemainingRedemptions());
+        $this->assertSame(Voucher::STATUS_ACTIVE, $voucher->availabilityStatusAt($date));
         $this->assertFalse($voucher->isAvailableAt($date->subHours(2)));
+        $this->assertSame(Voucher::STATUS_SCHEDULED, $voucher->availabilityStatusAt($date->subHours(2)));
         $this->assertFalse($voucher->isAvailableAt($date->addHours(2)));
+        $this->assertSame(Voucher::STATUS_EXPIRED, $voucher->availabilityStatusAt($date->addHours(2)));
 
         $voucher->redemptions_count = 2;
 
         $this->assertFalse($voucher->hasRemainingRedemptions());
+        $this->assertSame(Voucher::STATUS_EXHAUSTED, $voucher->availabilityStatusAt($date));
+
+        $voucher->is_enabled = false;
+
+        $this->assertSame(Voucher::STATUS_DISABLED, $voucher->availabilityStatusAt($date));
     }
 
     public function test_generator_returns_readable_unique_codes(): void

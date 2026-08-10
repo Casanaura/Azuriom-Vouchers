@@ -55,7 +55,7 @@ class VouchersServiceProvider extends BasePluginServiceProvider
                 'name' => trans('vouchers::admin.title'),
                 'icon' => 'bi bi-ticket-perforated',
                 'permission' => 'vouchers.admin',
-                'route' => 'vouchers.admin.index',
+                'route' => 'vouchers.admin.codes.index',
             ],
         ];
     }

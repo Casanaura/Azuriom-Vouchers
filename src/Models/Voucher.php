@@ -23,6 +23,7 @@ use LogicException;
  * @property int|null $max_redemptions
  * @property int|null $max_redemptions_per_user
  * @property int $redemptions_count
+ * @property int $revision
  * @property \Carbon\Carbon|null $starts_at
  * @property \Carbon\Carbon|null $expires_at
  * @property \Carbon\Carbon $created_at
@@ -33,6 +34,16 @@ use LogicException;
 class Voucher extends Model
 {
     use Loggable;
+
+    public const STATUS_ACTIVE = 'active';
+
+    public const STATUS_DISABLED = 'disabled';
+
+    public const STATUS_SCHEDULED = 'scheduled';
+
+    public const STATUS_EXPIRED = 'expired';
+
+    public const STATUS_EXHAUSTED = 'exhausted';
 
     /**
      * The table associated with the model.
@@ -70,6 +81,7 @@ class Voucher extends Model
         'max_redemptions' => 'integer',
         'max_redemptions_per_user' => 'integer',
         'redemptions_count' => 'integer',
+        'revision' => 'integer',
         'starts_at' => 'datetime',
         'expires_at' => 'datetime',
     ];
@@ -121,6 +133,28 @@ class Voucher extends Model
     {
         return $this->max_redemptions === null
             || $this->redemptions_count < $this->max_redemptions;
+    }
+
+    /**
+     * Get the current administration status for this voucher.
+     */
+    public function availabilityStatusAt(CarbonInterface $date): string
+    {
+        if (! $this->is_enabled) {
+            return self::STATUS_DISABLED;
+        }
+
+        if ($this->starts_at !== null && $date->lt($this->starts_at)) {
+            return self::STATUS_SCHEDULED;
+        }
+
+        if ($this->expires_at !== null && $date->gt($this->expires_at)) {
+            return self::STATUS_EXPIRED;
+        }
+
+        return $this->hasRemainingRedemptions()
+            ? self::STATUS_ACTIVE
+            : self::STATUS_EXHAUSTED;
     }
 
     /**

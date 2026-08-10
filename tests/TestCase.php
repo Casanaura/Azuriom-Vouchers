@@ -33,7 +33,9 @@ abstract class TestCase extends BaseTestCase
     {
         parent::setUp();
 
-        $migration = require dirname(__DIR__).'/database/migrations/2026_08_10_000000_create_vouchers_tables.php';
-        $migration->up();
+        foreach (glob(dirname(__DIR__).'/database/migrations/*.php') as $migrationPath) {
+            $migration = require $migrationPath;
+            $migration->up();
+        }
     }
 }

@@ -3,7 +3,76 @@
 return [
     'title' => 'Códigos de canje',
     'permission' => 'Administrar códigos de canje',
-    'coming_soon' => 'La administración de códigos estará disponible próximamente.',
+
+    'codes' => [
+        'title' => 'Códigos de canje',
+        'description' => 'Crea códigos, controla quién puede canjearlos y asigna una o varias recompensas.',
+        'create' => 'Crear código',
+        'edit' => 'Editar :voucher',
+        'empty' => 'Todavía no se ha creado ningún código de canje.',
+        'created' => 'El código de canje fue creado.',
+        'updated' => 'El código de canje fue actualizado.',
+        'deleted' => 'El código de canje fue eliminado.',
+        'delete_has_redemptions' => 'No se puede eliminar un código con historial de canjes. Desactívalo en su lugar.',
+    ],
+
+    'fields' => [
+        'name' => 'Nombre interno',
+        'code' => 'Código',
+        'status' => 'Estado',
+        'uses' => 'Usos',
+        'rewards' => 'Recompensas',
+        'max_redemptions' => 'Límite global de canjes',
+        'max_redemptions_per_user' => 'Límite de canjes por usuario',
+        'starts_at' => 'Fecha de inicio',
+        'expires_at' => 'Fecha de finalización',
+        'requires_authentication' => 'Requerir que el usuario inicie sesión',
+        'is_enabled' => 'Código habilitado',
+    ],
+
+    'help' => [
+        'code' => 'Usa entre 8 y 64 letras o números. Los espacios y guiones se ignoran al canjear.',
+        'max_redemptions' => 'Usa 1 para un código de un solo uso o déjalo vacío para permitir canjes ilimitados.',
+        'max_redemptions_per_user' => 'Usa 1 para impedir que la misma cuenta canjee este código más de una vez. Déjalo vacío para permitir canjes ilimitados por cuenta.',
+        'requires_authentication' => 'Si se desactiva, los invitados deberán indicar el nombre de una cuenta existente en Azuriom.',
+    ],
+
+    'actions' => [
+        'generate' => 'Generar',
+    ],
+
+    'rewards' => [
+        'title' => 'Recompensas',
+        'description' => 'Todas las recompensas se entregarán en el orden indicado.',
+        'add' => 'Agregar recompensa',
+        'reward' => 'Recompensa',
+        'type' => 'Tipo de recompensa',
+        'amount' => 'Puntos',
+        'types' => [
+            'money' => 'Puntos de Shop',
+        ],
+    ],
+
+    'status' => [
+        'active' => ['label' => 'Activo', 'color' => 'success'],
+        'disabled' => ['label' => 'Desactivado', 'color' => 'secondary'],
+        'scheduled' => ['label' => 'Programado', 'color' => 'info'],
+        'expired' => ['label' => 'Vencido', 'color' => 'warning'],
+        'exhausted' => ['label' => 'Agotado', 'color' => 'danger'],
+    ],
+
+    'validation' => [
+        'code_format' => 'El código debe contener entre 8 y 64 letras o números.',
+        'code_unique' => 'Este código de canje ya está en uso.',
+        'expires_after_start' => 'La fecha de finalización debe ser posterior a la fecha de inicio.',
+        'stale_revision' => 'Otro administrador modificó este código. Recarga la página y revisa sus cambios antes de guardar de nuevo.',
+    ],
+
+    'errors' => [
+        'generation_failed' => 'No se pudo generar el código. Inténtalo de nuevo.',
+    ],
+
+    'unlimited' => 'Ilimitado',
 
     'logs' => [
         'vouchers-codes' => [
