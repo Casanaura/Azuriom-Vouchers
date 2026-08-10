@@ -1,0 +1,10 @@
+{
+    "name": "casanaura/azuriom-vouchers",
+    "type": "azuriom-plugin",
+    "description": "Create redeemable codes that grant one or more rewards to Azuriom users.",
+    "autoload": {
+        "psr-4": {
+            "Azuriom\\Plugin\\Vouchers\\": "src/"
+        }
+    }
+}

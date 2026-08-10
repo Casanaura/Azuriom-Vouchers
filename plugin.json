@@ -1,0 +1,16 @@
+{
+    "id": "vouchers",
+    "name": "Vouchers",
+    "description": "Create redeemable codes that grant one or more rewards to Azuriom users.",
+    "version": "0.1.0",
+    "url": "https://github.com/Casanaura/Azuriom-Vouchers",
+    "authors": [
+        "Zibuu",
+        "Kissadere"
+    ],
+    "azuriom_api": "1.2.0",
+    "providers": [
+        "\\Azuriom\\Plugin\\Vouchers\\Providers\\VouchersServiceProvider",
+        "\\Azuriom\\Plugin\\Vouchers\\Providers\\RouteServiceProvider"
+    ]
+}
