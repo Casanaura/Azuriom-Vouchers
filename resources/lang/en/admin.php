@@ -38,6 +38,7 @@ return [
         'requires_authentication' => 'When disabled, guests must provide the name of an existing Azuriom account.',
         'shop_package' => 'Subscriptions, packages with required variables and dynamic-value gift cards are excluded. Disabled packages remain available as hidden rewards.',
         'server_command' => 'Use {player} or {name} for the recipient. Write one command without a leading slash. Waiting for the player requires an AzLink server.',
+        'internal_role' => 'Promotes the account only when this role has more power than its current role. Only one role reward is allowed per voucher. Administrative roles are excluded and Discord linked roles are not synchronized.',
     ],
 
     'actions' => [
@@ -64,12 +65,17 @@ return [
         'select_server' => 'Select a server',
         'server_unavailable' => 'unavailable',
         'server_unavailable_help' => 'This voucher points to a deleted server or one that can no longer execute commands. Select another server before saving.',
+        'role' => 'Internal role',
+        'select_role' => 'Select a role',
+        'role_unavailable' => 'unavailable',
+        'role_unavailable_help' => 'This voucher points to a deleted, administrative or no longer manageable role. Select another role before saving.',
         'unsupported_type' => 'Unsupported type: :type',
         'unsupported_type_unknown' => 'Unsupported type',
         'types' => [
             'money' => 'Shop points',
             'shop_package' => 'Shop package / product',
             'server_command' => 'Server command (RCON / AzLink)',
+            'internal_role' => 'Internal Azuriom role',
         ],
         'conditions' => [
             'immediate' => 'Execute immediately',
@@ -94,6 +100,8 @@ return [
         'server_unavailable' => 'The selected server does not exist or can no longer execute commands.',
         'online_requirement_unavailable' => 'Only AzLink servers can wait until the player is online.',
         'command_format' => 'Use one command without a leading slash or control characters. Only {player} and {name} placeholders are supported.',
+        'role_unavailable' => 'The selected role is unavailable, administrative or outside your authority.',
+        'role_limit' => 'A voucher can contain only one internal role reward.',
         'reward_unavailable' => 'A selected reward integration changed while the voucher was being saved. Review the rewards and try again.',
     ],
 

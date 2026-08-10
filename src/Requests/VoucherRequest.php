@@ -5,6 +5,7 @@ namespace Azuriom\Plugin\Vouchers\Requests;
 use Azuriom\Http\Requests\Traits\ConvertCheckbox;
 use Azuriom\Plugin\Vouchers\Models\Reward;
 use Azuriom\Plugin\Vouchers\Models\Voucher;
+use Azuriom\Plugin\Vouchers\Services\InternalRoleCatalog;
 use Azuriom\Plugin\Vouchers\Services\ServerCommandCatalog;
 use Azuriom\Plugin\Vouchers\Services\ShopPackageCatalog;
 use Carbon\Carbon;
@@ -42,7 +43,7 @@ class VoucherRequest extends FormRequest
                     return $reward;
                 }
 
-                foreach (['type', 'amount', 'package_id', 'server_id', 'command', 'require_online'] as $key) {
+                foreach (['type', 'amount', 'package_id', 'server_id', 'role_id', 'command', 'require_online'] as $key) {
                     if (array_key_exists($key, $reward)
                         && ! is_scalar($reward[$key])
                         && $reward[$key] !== null) {
@@ -73,7 +74,11 @@ class VoucherRequest extends FormRequest
      */
     public function rules(): array
     {
-        $rewardTypes = [Reward::TYPE_MONEY, Reward::TYPE_SERVER_COMMAND];
+        $rewardTypes = [
+            Reward::TYPE_MONEY,
+            Reward::TYPE_SERVER_COMMAND,
+            Reward::TYPE_INTERNAL_ROLE,
+        ];
 
         if ($this->shopPackages()->isAvailable()) {
             $rewardTypes[] = Reward::TYPE_SHOP_PACKAGE;
@@ -105,6 +110,11 @@ class VoucherRequest extends FormRequest
             'rewards.*.server_id' => [
                 'nullable',
                 'required_if:rewards.*.type,'.Reward::TYPE_SERVER_COMMAND,
+                'integer', 'min:1', 'max:4294967295',
+            ],
+            'rewards.*.role_id' => [
+                'nullable',
+                'required_if:rewards.*.type,'.Reward::TYPE_INTERNAL_ROLE,
                 'integer', 'min:1', 'max:4294967295',
             ],
             'rewards.*.command' => [
@@ -173,6 +183,7 @@ class VoucherRequest extends FormRequest
 
             $this->validateShopRewards($validator);
             $this->validateServerRewards($validator);
+            $this->validateInternalRoleRewards($validator);
         });
     }
 
@@ -246,6 +257,48 @@ class VoucherRequest extends FormRequest
         }
     }
 
+    /**
+     * Confirm that every role is safe and within the current manager's authority.
+     */
+    private function validateInternalRoleRewards(Validator $validator): void
+    {
+        $roleRewards = collect($this->input('rewards', []))
+            ->filter(fn (mixed $reward) => is_array($reward)
+                && ($reward['type'] ?? null) === Reward::TYPE_INTERNAL_ROLE);
+
+        if ($roleRewards->isEmpty()) {
+            return;
+        }
+
+        if ($roleRewards->count() > 1) {
+            $validator->errors()->add(
+                'rewards',
+                trans('vouchers::admin.validation.role_limit'),
+            );
+        }
+
+        $eligibleIds = $this->internalRoles()->eligibleIds(
+            $roleRewards->pluck('role_id'),
+            $this->user(),
+        );
+
+        foreach ($roleRewards as $index => $reward) {
+            $attribute = 'rewards.'.$index.'.role_id';
+            $roleId = filter_var($reward['role_id'] ?? null, FILTER_VALIDATE_INT);
+
+            if ($roleId === false || $validator->errors()->has($attribute)) {
+                continue;
+            }
+
+            if (! $eligibleIds->contains((int) $roleId)) {
+                $validator->errors()->add(
+                    $attribute,
+                    trans('vouchers::admin.validation.role_unavailable'),
+                );
+            }
+        }
+    }
+
     private function shopPackages(): ShopPackageCatalog
     {
         return app(ShopPackageCatalog::class);
@@ -254,6 +307,11 @@ class VoucherRequest extends FormRequest
     private function serverCommands(): ServerCommandCatalog
     {
         return app(ServerCommandCatalog::class);
+    }
+
+    private function internalRoles(): InternalRoleCatalog
+    {
+        return app(InternalRoleCatalog::class);
     }
 
     /**

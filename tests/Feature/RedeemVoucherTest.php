@@ -3,6 +3,7 @@
 namespace Azuriom\Plugin\Vouchers\Tests\Feature;
 
 use Azuriom\Models\Server;
+use Azuriom\Models\Role;
 use Azuriom\Models\User;
 use Azuriom\Plugin\Shop\Events\PackageDelivered;
 use Azuriom\Plugin\Shop\Events\PaymentPaid;
@@ -99,6 +100,251 @@ class RedeemVoucherTest extends TestCase
 
         $this->assertSame(Redemption::STATUS_COMPLETED, $redemption->status);
         $this->assertSame(123456789.12, $user->fresh()->money);
+    }
+
+    public function test_internal_role_promotes_the_recipient_and_is_request_idempotent(): void
+    {
+        $vipRole = $this->createRole('VIP', 10);
+        $user = $this->createUser();
+        $voucher = $this->createVoucher(maxPerUser: 2);
+        $voucher->rewards()->create([
+            'type' => Reward::TYPE_INTERNAL_ROLE,
+            'configuration' => ['role_id' => $vipRole->id, 'role_name' => 'Stale name'],
+            'position' => 0,
+        ]);
+        $token = (string) Str::uuid();
+
+        $first = app(RedeemVoucher::class)->redeem(
+            'welcome-2026',
+            $user,
+            null,
+            $token,
+            '127.0.0.1',
+        );
+        $repeated = app(RedeemVoucher::class)->redeem(
+            'welcome-2026',
+            $user,
+            null,
+            $token,
+            '127.0.0.1',
+        );
+        $execution = $first->executions->sole();
+
+        $this->assertSame($first->id, $repeated->id);
+        $this->assertSame(Redemption::STATUS_COMPLETED, $first->status);
+        $this->assertSame($vipRole->id, $user->fresh()->role_id);
+        $this->assertSame(RewardExecution::STATUS_SUCCEEDED, $execution->status);
+        $this->assertSame(0, $execution->attempts);
+        $this->assertSame('VIP', $execution->configuration['role_name']);
+        $this->assertSame(10, $execution->configuration['role_power']);
+        $this->assertSame(1, $voucher->fresh()->redemptions_count);
+    }
+
+    public function test_internal_role_never_downgrades_or_replaces_an_equal_or_administrative_role(): void
+    {
+        $targetRole = $this->createRole('VIP', 10);
+        $equalRole = $this->createRole('Partner', 10);
+        $higherRole = $this->createRole('Veteran', 20);
+        $adminRole = $this->createRole('Administrator', 0, true);
+        $rawAdminRole = $this->createRole('Back office', 0);
+        $rawAdminRole->permissions()->create(['permission' => 'admin.access']);
+        $higherUser = $this->createUser(role: $higherRole);
+        $adminUser = $this->createUser(2, 'AdminPlayer', $adminRole);
+        $rawAdminUser = $this->createUser(3, 'BackOfficePlayer', $rawAdminRole);
+        $equalUser = $this->createUser(4, 'PartnerPlayer', $equalRole);
+
+        foreach ([
+            ['code' => 'WELCOME-2026', 'user' => $higherUser],
+            ['code' => 'ADMIN-ROLE-2026', 'user' => $adminUser],
+            ['code' => 'RAW-ADMIN-2026', 'user' => $rawAdminUser],
+            ['code' => 'EQUAL-ROLE-2026', 'user' => $equalUser],
+        ] as $case) {
+            $voucher = $this->createVoucher(maxPerUser: 1, code: $case['code']);
+            $voucher->rewards()->create([
+                'type' => Reward::TYPE_INTERNAL_ROLE,
+                'configuration' => ['role_id' => $targetRole->id],
+                'position' => 0,
+            ]);
+
+            $redemption = app(RedeemVoucher::class)->redeem(
+                $case['code'],
+                $case['user'],
+                null,
+                (string) Str::uuid(),
+                '127.0.0.1',
+            );
+
+            $this->assertSame(Redemption::STATUS_COMPLETED, $redemption->status);
+        }
+
+        $this->assertSame($higherRole->id, $higherUser->fresh()->role_id);
+        $this->assertSame($adminRole->id, $adminUser->fresh()->role_id);
+        $this->assertSame($rawAdminRole->id, $rawAdminUser->fresh()->role_id);
+        $this->assertSame($equalRole->id, $equalUser->fresh()->role_id);
+    }
+
+    public function test_an_unsafe_internal_role_rolls_back_every_reward(): void
+    {
+        $unsafeRole = $this->createRole('Back office', 50);
+        $unsafeRole->permissions()->create(['permission' => 'admin.access']);
+        $user = $this->createUser();
+        $voucher = $this->createVoucher(maxPerUser: 1);
+        $voucher->rewards()->createMany([
+            ['type' => Reward::TYPE_MONEY, 'configuration' => ['amount' => 25], 'position' => 0],
+            [
+                'type' => Reward::TYPE_INTERNAL_ROLE,
+                'configuration' => ['role_id' => $unsafeRole->id],
+                'position' => 1,
+            ],
+        ]);
+
+        try {
+            app(RedeemVoucher::class)->redeem(
+                'welcome-2026',
+                $user,
+                null,
+                (string) Str::uuid(),
+                '127.0.0.1',
+            );
+            $this->fail('An administrative internal role was delivered by a voucher.');
+        } catch (VoucherRedemptionException $exception) {
+            $this->assertSame(VoucherRedemptionException::INVALID_CONFIGURATION, $exception->reason);
+        }
+
+        $this->assertSame(1, $user->fresh()->role_id);
+        $this->assertSame(0.0, $user->fresh()->money);
+        $this->assertSame(0, $voucher->fresh()->redemptions_count);
+        $this->assertSame(0, Redemption::query()->count());
+        $this->assertSame(0, RewardExecution::query()->count());
+    }
+
+    public function test_an_internal_role_promoted_to_administrator_after_configuration_is_rejected(): void
+    {
+        $role = $this->createRole('Future administrator', 10);
+        $user = $this->createUser();
+        $voucher = $this->createVoucher(maxPerUser: 1);
+        $voucher->rewards()->create([
+            'type' => Reward::TYPE_INTERNAL_ROLE,
+            'configuration' => [
+                'role_id' => $role->id,
+                'role_name' => $role->name,
+                'role_power' => $role->power,
+            ],
+            'position' => 0,
+        ]);
+        $role->forceFill(['is_admin' => true])->save();
+
+        try {
+            app(RedeemVoucher::class)->redeem(
+                'welcome-2026',
+                $user,
+                null,
+                (string) Str::uuid(),
+                '127.0.0.1',
+            );
+            $this->fail('A role promoted to administrator remained deliverable.');
+        } catch (VoucherRedemptionException $exception) {
+            $this->assertSame(VoucherRedemptionException::INVALID_CONFIGURATION, $exception->reason);
+        }
+
+        $this->assertSame(1, $user->fresh()->role_id);
+        $this->assertSame(0, $voucher->fresh()->redemptions_count);
+        $this->assertSame(0, Redemption::query()->count());
+    }
+
+    public function test_an_invalid_reward_prevents_an_internal_role_promotion_and_rolls_back(): void
+    {
+        $vipRole = $this->createRole('VIP', 10);
+        $user = $this->createUser();
+        $voucher = $this->createVoucher(maxPerUser: 1);
+        $voucher->rewards()->createMany([
+            [
+                'type' => Reward::TYPE_INTERNAL_ROLE,
+                'configuration' => ['role_id' => $vipRole->id],
+                'position' => 0,
+            ],
+            ['type' => Reward::TYPE_MONEY, 'configuration' => ['amount' => 0.001], 'position' => 1],
+        ]);
+
+        try {
+            app(RedeemVoucher::class)->redeem(
+                'welcome-2026',
+                $user,
+                null,
+                (string) Str::uuid(),
+                '127.0.0.1',
+            );
+            $this->fail('The invalid reward did not prevent the internal role promotion.');
+        } catch (VoucherRedemptionException $exception) {
+            $this->assertSame(VoucherRedemptionException::INVALID_CONFIGURATION, $exception->reason);
+        }
+
+        $this->assertSame(1, $user->fresh()->role_id);
+        $this->assertSame(0, $voucher->fresh()->redemptions_count);
+        $this->assertSame(0, Redemption::query()->count());
+    }
+
+    public function test_guest_internal_role_uses_the_resolved_existing_account(): void
+    {
+        $vipRole = $this->createRole('VIP', 10);
+        $user = $this->createUser();
+        $voucher = $this->createVoucher(maxPerUser: 1);
+        $voucher->forceFill(['requires_authentication' => false])->save();
+        $voucher->rewards()->create([
+            'type' => Reward::TYPE_INTERNAL_ROLE,
+            'configuration' => ['role_id' => $vipRole->id],
+            'position' => 0,
+        ]);
+
+        $redemption = app(RedeemVoucher::class)->redeem(
+            'welcome-2026',
+            null,
+            'PlayerOne',
+            (string) Str::uuid(),
+            '127.0.0.1',
+        );
+
+        $this->assertSame(Redemption::STATUS_COMPLETED, $redemption->status);
+        $this->assertNull($redemption->redeemer_id);
+        $this->assertSame($user->id, $redemption->user_id);
+        $this->assertSame($vipRole->id, $user->fresh()->role_id);
+    }
+
+    public function test_multiple_internal_role_rewards_are_rejected_atomically(): void
+    {
+        $vipRole = $this->createRole('VIP', 10);
+        $eliteRole = $this->createRole('Elite', 20);
+        $user = $this->createUser();
+        $voucher = $this->createVoucher(maxPerUser: 1);
+        $voucher->rewards()->createMany([
+            [
+                'type' => Reward::TYPE_INTERNAL_ROLE,
+                'configuration' => ['role_id' => $vipRole->id],
+                'position' => 0,
+            ],
+            [
+                'type' => Reward::TYPE_INTERNAL_ROLE,
+                'configuration' => ['role_id' => $eliteRole->id],
+                'position' => 1,
+            ],
+        ]);
+
+        try {
+            app(RedeemVoucher::class)->redeem(
+                'welcome-2026',
+                $user,
+                null,
+                (string) Str::uuid(),
+                '127.0.0.1',
+            );
+            $this->fail('A voucher delivered more than one internal role reward.');
+        } catch (VoucherRedemptionException $exception) {
+            $this->assertSame(VoucherRedemptionException::INVALID_CONFIGURATION, $exception->reason);
+        }
+
+        $this->assertSame(1, $user->fresh()->role_id);
+        $this->assertSame(0, $voucher->fresh()->redemptions_count);
+        $this->assertSame(0, Redemption::query()->count());
     }
 
     public function test_an_unavailable_shop_reward_rolls_back_the_reservation(): void
@@ -643,26 +889,16 @@ class RedeemVoucherTest extends TestCase
         $voucher->redemptions()->create($attributes);
     }
 
-    private function createUser(int $id = 1, string $name = 'PlayerOne'): User
+    private function createUser(int $id = 1, string $name = 'PlayerOne', ?Role $role = null): User
     {
-        if (! DB::table('roles')->where('id', 1)->exists()) {
-            DB::table('roles')->insert([
-                'id' => 1,
-                'name' => 'Member',
-                'color' => 'ffffff',
-                'power' => 0,
-                'is_admin' => false,
-                'created_at' => now(),
-                'updated_at' => now(),
-            ]);
-        }
+        $this->ensureDefaultRole();
 
         DB::table('users')->insert([
             'id' => $id,
             'name' => $name,
             'email' => "player{$id}@example.com",
             'password' => 'not-used-in-tests',
-            'role_id' => 1,
+            'role_id' => $role?->id ?? 1,
             'money' => 0,
             'game_id' => 'player-'.$id,
             'created_at' => now(),
@@ -670,6 +906,35 @@ class RedeemVoucherTest extends TestCase
         ]);
 
         return User::query()->findOrFail($id);
+    }
+
+    private function createRole(string $name, int $power, bool $isAdmin = false): Role
+    {
+        $this->ensureDefaultRole();
+
+        return Role::create([
+            'name' => $name,
+            'color' => 'ffffff',
+            'power' => $power,
+            'is_admin' => $isAdmin,
+        ]);
+    }
+
+    private function ensureDefaultRole(): void
+    {
+        if (DB::table('roles')->where('id', 1)->exists()) {
+            return;
+        }
+
+        DB::table('roles')->insert([
+            'id' => 1,
+            'name' => 'Member',
+            'color' => 'ffffff',
+            'power' => 0,
+            'is_admin' => false,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
     }
 
     private function createServer(string $type = 'recording-server'): Server

@@ -5,6 +5,7 @@ namespace Azuriom\Plugin\Vouchers\Services;
 use Azuriom\Models\User;
 use Azuriom\Plugin\Vouchers\Exceptions\VoucherRedemptionException;
 use Azuriom\Plugin\Vouchers\Models\Redemption;
+use Azuriom\Plugin\Vouchers\Models\Reward;
 use Azuriom\Plugin\Vouchers\Models\RewardExecution;
 use Azuriom\Plugin\Vouchers\Models\Voucher;
 use Illuminate\Database\UniqueConstraintViolationException;
@@ -85,6 +86,10 @@ class RedeemVoucher
                     throw new VoucherRedemptionException(VoucherRedemptionException::INVALID_CONFIGURATION);
                 }
 
+                if ($voucher->rewards->where('type', Reward::TYPE_INTERNAL_ROLE)->count() > 1) {
+                    throw new VoucherRedemptionException(VoucherRedemptionException::INVALID_CONFIGURATION);
+                }
+
                 $redemption = new Redemption();
                 $redemption->forceFill([
                     'request_token' => $requestToken,
@@ -98,11 +103,25 @@ class RedeemVoucher
                 ]);
                 $voucher->redemptions()->save($redemption);
 
+                $internalRoleExecution = null;
+
                 foreach ($voucher->rewards as $reward) {
                     $execution = RewardExecution::fromReward($reward);
                     $redemption->executions()->save($execution);
                     $this->delivery->prepare($execution, $redemption, $recipient);
+
+                    if ($reward->type === Reward::TYPE_INTERNAL_ROLE) {
+                        $internalRoleExecution = $execution;
+
+                        continue;
+                    }
+
                     $this->delivery->deliverTransactional($execution, $recipient);
+                }
+
+                // Role rows are shared by many users, so hold their locks only at the end.
+                if ($internalRoleExecution !== null) {
+                    $this->delivery->deliverTransactional($internalRoleExecution, $recipient);
                 }
 
                 $voucher->increment('redemptions_count');

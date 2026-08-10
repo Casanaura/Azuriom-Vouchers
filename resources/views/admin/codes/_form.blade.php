@@ -14,6 +14,13 @@
             && ($reward['type'] ?? null) === 'server_command'
             && ($serverId === false || ! $servers->contains('id', (int) $serverId));
     });
+    $hasUnavailableInternalRole = collect($rewards)->contains(function ($reward) use ($internalRoles) {
+        $roleId = is_array($reward) ? filter_var($reward['role_id'] ?? null, FILTER_VALIDATE_INT) : false;
+
+        return is_array($reward)
+            && ($reward['type'] ?? null) === 'internal_role'
+            && ($roleId === false || ! $internalRoles->contains('id', (int) $roleId));
+    });
     $safeOld = static function (string $key, mixed $default = ''): mixed {
         $value = old($key, $default);
 
@@ -123,6 +130,12 @@
 @if($hasUnavailableServer)
     <div class="alert alert-warning" role="alert">
         {{ trans('vouchers::admin.rewards.server_unavailable_help') }}
+    </div>
+@endif
+
+@if($hasUnavailableInternalRole)
+    <div class="alert alert-warning" role="alert">
+        {{ trans('vouchers::admin.rewards.role_unavailable_help') }}
     </div>
 @endif
 

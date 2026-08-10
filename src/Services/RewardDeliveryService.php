@@ -13,6 +13,7 @@ class RewardDeliveryService
 {
     public function __construct(
         private readonly PointRewardService $points,
+        private readonly InternalRoleRewardService $internalRoles,
         private readonly ShopPackageRewardService $shopPackages,
         private readonly ServerCommandRewardService $serverCommands,
         private readonly RedemptionStatusService $redemptionStatuses,
@@ -27,7 +28,7 @@ class RewardDeliveryService
         Redemption $redemption,
         User $recipient,
     ): void {
-        if ($execution->type === Reward::TYPE_MONEY) {
+        if (in_array($execution->type, [Reward::TYPE_MONEY, Reward::TYPE_INTERNAL_ROLE], true)) {
             return;
         }
 
@@ -53,6 +54,12 @@ class RewardDeliveryService
     {
         if ($execution->type === Reward::TYPE_MONEY) {
             $this->points->deliver($execution, $recipient);
+
+            return;
+        }
+
+        if ($execution->type === Reward::TYPE_INTERNAL_ROLE) {
+            $this->internalRoles->deliver($execution, $recipient);
 
             return;
         }

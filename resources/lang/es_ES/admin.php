@@ -38,6 +38,7 @@ return [
         'requires_authentication' => 'Si se desactiva, los invitados deberán indicar el nombre de una cuenta existente en Azuriom.',
         'shop_package' => 'Se excluyen suscripciones, paquetes con variables obligatorias y giftcards de valor dinámico. Los paquetes deshabilitados siguen disponibles como recompensas ocultas.',
         'server_command' => 'Usa {player} o {name} para el destinatario. Escribe un solo comando sin / inicial. Esperar al jugador requiere un servidor AzLink.',
+        'internal_role' => 'Asciende la cuenta solo si este rol tiene más poder que su rol actual. Solo se permite una recompensa de rol por voucher. Los roles administrativos están excluidos y los roles vinculados de Discord no se sincronizan.',
     ],
 
     'actions' => [
@@ -64,12 +65,17 @@ return [
         'select_server' => 'Selecciona un servidor',
         'server_unavailable' => 'no disponible',
         'server_unavailable_help' => 'Este voucher apunta a un servidor eliminado o que ya no puede ejecutar comandos. Selecciona otro servidor antes de guardar.',
+        'role' => 'Rol interno',
+        'select_role' => 'Selecciona un rol',
+        'role_unavailable' => 'no disponible',
+        'role_unavailable_help' => 'Este voucher apunta a un rol eliminado, administrativo o que ya no puedes administrar. Selecciona otro rol antes de guardar.',
         'unsupported_type' => 'Tipo no compatible: :type',
         'unsupported_type_unknown' => 'Tipo no compatible',
         'types' => [
             'money' => 'Puntos de Shop',
             'shop_package' => 'Paquete / producto de Shop',
             'server_command' => 'Comando de servidor (RCON / AzLink)',
+            'internal_role' => 'Rol interno de Azuriom',
         ],
         'conditions' => [
             'immediate' => 'Ejecutar inmediatamente',
@@ -94,6 +100,8 @@ return [
         'server_unavailable' => 'El servidor seleccionado no existe o ya no puede ejecutar comandos.',
         'online_requirement_unavailable' => 'Solo los servidores AzLink pueden esperar a que el jugador esté conectado.',
         'command_format' => 'Usa un solo comando sin / inicial ni caracteres de control. Solo se admiten las variables {player} y {name}.',
+        'role_unavailable' => 'El rol seleccionado no está disponible, es administrativo o está fuera de tu autoridad.',
+        'role_limit' => 'Un voucher solo puede contener una recompensa de rol interno.',
         'reward_unavailable' => 'Una integración de recompensa cambió mientras se guardaba el voucher. Revisa las recompensas e inténtalo de nuevo.',
     ],
 

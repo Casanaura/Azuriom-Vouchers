@@ -7,6 +7,7 @@ Vouchers is an Azuriom plugin for creating redeemable codes and granting one or 
 - Shop points.
 - Shop packages and products.
 - Commands dispatched through Azuriom's native RCON or AzLink server bridges.
+- Internal Azuriom roles.
 
 ## Architecture
 
@@ -19,6 +20,8 @@ Vouchers is an Azuriom plugin for creating redeemable codes and granting one or 
 - Server commands use one execution-ledger entry per command and support the safe `{player}` and `{name}` recipient placeholders.
 - Recipient placeholders accept 1–64 ASCII characters: the name must start with a letter, number or underscore, then may also contain dots or hyphens. Other names are rejected before any command is sent.
 - Remaining rewards continue after an uncertain attempt so that an unrelated reward is not lost; ordering is therefore not guaranteed after an interrupted external delivery.
+- Each voucher accepts one internal-role reward, which can be combined with every other reward type. It is an atomic upgrade that never downgrades an account, replaces an administrative role or grants a role with administrative access.
+- Internal-role rewards intentionally update Azuriom only. Discord linked-role synchronization is not executed inside the voucher transaction.
 
 Azuriom's scheduler must be running. Vouchers registers `vouchers:deliveries` every five minutes to process pending external rewards, reconcile abandoned claims and repair aggregate states.
 
@@ -36,6 +39,7 @@ Currently implemented:
 - Multiple ordered Shop point rewards.
 - Optional Shop package/product rewards with a zero-cost payment audit trail.
 - RCON/AzLink command rewards with one-attempt dispatch and an auditable uncertainty state.
+- Internal-role rewards with monotonic promotion and privilege-escalation safeguards.
 - Public redemption for signed-in users or guests targeting an existing account.
 - Atomic point delivery with per-request idempotency.
 

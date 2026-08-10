@@ -15,10 +15,17 @@
         : '#'.$selectedServerId;
     $rewardCommand = is_scalar($reward['command'] ?? null) ? (string) $reward['command'] : '';
     $requireOnline = in_array($reward['require_online'] ?? false, [true, 1, '1'], true);
+    $roleId = filter_var($reward['role_id'] ?? null, FILTER_VALIDATE_INT);
+    $selectedRoleId = $roleId === false || $roleId < 1 ? null : (int) $roleId;
+    $selectedRoleAvailable = $selectedRoleId !== null && $internalRoles->contains('id', $selectedRoleId);
+    $selectedRoleName = is_string($reward['role_name'] ?? null)
+        ? $reward['role_name']
+        : '#'.$selectedRoleId;
     $knownRewardType = is_string($rewardType) && in_array($rewardType, [
         \Azuriom\Plugin\Vouchers\Models\Reward::TYPE_MONEY,
         \Azuriom\Plugin\Vouchers\Models\Reward::TYPE_SHOP_PACKAGE,
         \Azuriom\Plugin\Vouchers\Models\Reward::TYPE_SERVER_COMMAND,
+        \Azuriom\Plugin\Vouchers\Models\Reward::TYPE_INTERNAL_ROLE,
     ], true);
 @endphp
 
@@ -60,6 +67,14 @@
                             {{ trans('vouchers::admin.rewards.types.server_command') }}
                             @if($servers->isEmpty())
                                 — {{ trans('vouchers::admin.rewards.server_unavailable') }}
+                            @endif
+                        </option>
+                    @endif
+                    @if($internalRoles->isNotEmpty() || $rewardType === 'internal_role')
+                        <option value="internal_role" @selected($rewardType === 'internal_role')>
+                            {{ trans('vouchers::admin.rewards.types.internal_role') }}
+                            @if($internalRoles->isEmpty())
+                                — {{ trans('vouchers::admin.rewards.role_unavailable') }}
                             @endif
                         </option>
                     @endif
@@ -153,6 +168,27 @@
                     </div>
                 </div>
                 <div class="form-text">{{ trans('vouchers::admin.help.server_command') }}</div>
+            </div>
+
+            <div class="col-md-6" data-reward-fields="internal_role" @if($rewardType !== 'internal_role') hidden @endif>
+                <label class="form-label" for="rewardRole{{ $index }}">{{ trans('vouchers::admin.rewards.role') }}</label>
+                <select class="form-select @error('rewards.'.$index.'.role_id') is-invalid @enderror" id="rewardRole{{ $index }}" name="rewards[{{ $index }}][role_id]" data-active-required @disabled($rewardType !== 'internal_role') @required($rewardType === 'internal_role')>
+                    <option value="">{{ trans('vouchers::admin.rewards.select_role') }}</option>
+                    @if($selectedRoleId !== null && ! $selectedRoleAvailable)
+                        <option value="{{ $selectedRoleId }}" selected>
+                            {{ $selectedRoleName }} — {{ trans('vouchers::admin.rewards.role_unavailable') }}
+                        </option>
+                    @endif
+                    @foreach($internalRoles as $role)
+                        <option value="{{ $role->id }}" @selected($selectedRoleId === (int) $role->id)>
+                            {{ $role->name }} (#{{ $role->id }})
+                        </option>
+                    @endforeach
+                </select>
+                @error('rewards.'.$index.'.role_id')
+                    <span class="invalid-feedback" role="alert"><strong>{{ $message }}</strong></span>
+                @enderror
+                <div class="form-text">{{ trans('vouchers::admin.help.internal_role') }}</div>
             </div>
         </div>
     </div>

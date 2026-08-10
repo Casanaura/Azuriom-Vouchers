@@ -30,10 +30,13 @@ class Reward extends Model
 
     public const TYPE_SERVER_COMMAND = 'server_command';
 
+    public const TYPE_INTERNAL_ROLE = 'internal_role';
+
     public const TYPES = [
         self::TYPE_MONEY,
         self::TYPE_SHOP_PACKAGE,
         self::TYPE_SERVER_COMMAND,
+        self::TYPE_INTERNAL_ROLE,
     ];
 
     public const EXTERNAL_TYPES = [

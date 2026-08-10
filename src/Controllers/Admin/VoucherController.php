@@ -3,9 +3,11 @@
 namespace Azuriom\Plugin\Vouchers\Controllers\Admin;
 
 use Azuriom\Http\Controllers\Controller;
+use Azuriom\Models\User;
 use Azuriom\Plugin\Vouchers\Models\Reward;
 use Azuriom\Plugin\Vouchers\Models\Voucher;
 use Azuriom\Plugin\Vouchers\Requests\VoucherRequest;
+use Azuriom\Plugin\Vouchers\Services\InternalRoleCatalog;
 use Azuriom\Plugin\Vouchers\Services\ServerCommandCatalog;
 use Azuriom\Plugin\Vouchers\Services\ShopPackageCatalog;
 use Azuriom\Plugin\Vouchers\Services\VoucherCodeGenerator;
@@ -13,6 +15,7 @@ use Illuminate\Contracts\View\View;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -39,10 +42,14 @@ class VoucherController extends Controller
      * Show the voucher creation form.
      */
     public function create(
+        Request $request,
         VoucherCodeGenerator $generator,
         ShopPackageCatalog $shopPackages,
         ServerCommandCatalog $serverCommands,
+        InternalRoleCatalog $internalRoles,
     ): View {
+        $actor = $this->actor($request);
+
         return view('vouchers::admin.codes.create', [
             'voucher' => new Voucher([
                 'code' => $generator->generate(),
@@ -56,6 +63,7 @@ class VoucherController extends Controller
             'shopAvailable' => $shopPackages->isAvailable(),
             'shopPackages' => $shopPackages->packages(),
             'servers' => $serverCommands->servers(),
+            'internalRoles' => $internalRoles->roles($actor),
         ]);
     }
 
@@ -68,15 +76,20 @@ class VoucherController extends Controller
         VoucherRequest $request,
         ShopPackageCatalog $shopPackages,
         ServerCommandCatalog $serverCommands,
+        InternalRoleCatalog $internalRoles,
     ): RedirectResponse {
+        $actor = $this->actor($request);
+
         try {
-            DB::transaction(function () use ($request, $shopPackages, $serverCommands) {
+            DB::transaction(function () use ($request, $shopPackages, $serverCommands, $internalRoles, $actor) {
                 $data = $request->validated();
                 $rewards = Arr::pull($data, 'rewards');
                 Arr::forget($data, 'revision');
                 $voucher = Voucher::create($data);
 
-                $voucher->rewards()->createMany($this->mapRewards($rewards, $shopPackages, $serverCommands));
+                $voucher->rewards()->createMany(
+                    $this->mapRewards($rewards, $shopPackages, $serverCommands, $internalRoles, $actor)
+                );
             }, 3);
         } catch (UniqueConstraintViolationException) {
             throw ValidationException::withMessages([
@@ -96,10 +109,13 @@ class VoucherController extends Controller
      * Show the voucher editing form.
      */
     public function edit(
+        Request $request,
         Voucher $voucher,
         ShopPackageCatalog $shopPackages,
         ServerCommandCatalog $serverCommands,
+        InternalRoleCatalog $internalRoles,
     ): View {
+        $actor = $this->actor($request);
         $voucher->load('rewards');
 
         return view('vouchers::admin.codes.edit', [
@@ -111,6 +127,7 @@ class VoucherController extends Controller
             'shopAvailable' => $shopPackages->isAvailable(),
             'shopPackages' => $shopPackages->packages(),
             'servers' => $serverCommands->servers(),
+            'internalRoles' => $internalRoles->roles($actor),
         ]);
     }
 
@@ -124,9 +141,19 @@ class VoucherController extends Controller
         Voucher $voucher,
         ShopPackageCatalog $shopPackages,
         ServerCommandCatalog $serverCommands,
+        InternalRoleCatalog $internalRoles,
     ): RedirectResponse {
+        $actor = $this->actor($request);
+
         try {
-            DB::transaction(function () use ($request, $voucher, $shopPackages, $serverCommands) {
+            DB::transaction(function () use (
+                $request,
+                $voucher,
+                $shopPackages,
+                $serverCommands,
+                $internalRoles,
+                $actor,
+            ) {
                 $lockedVoucher = Voucher::query()->lockForUpdate()->findOrFail($voucher->getKey());
                 $data = $request->validated();
                 $rewards = Arr::pull($data, 'rewards');
@@ -144,7 +171,13 @@ class VoucherController extends Controller
                 ])->save();
                 $lockedVoucher->rewards()->delete();
                 $lockedVoucher->rewards()->createMany(
-                    $this->mapRewards($rewards, $shopPackages, $serverCommands)
+                    $this->mapRewards(
+                        $rewards,
+                        $shopPackages,
+                        $serverCommands,
+                        $internalRoles,
+                        $actor,
+                    )
                 );
             }, 3);
         } catch (UniqueConstraintViolationException) {
@@ -227,6 +260,8 @@ class VoucherController extends Controller
         array $rewards,
         ShopPackageCatalog $shopPackages,
         ServerCommandCatalog $serverCommands,
+        InternalRoleCatalog $internalRoles,
+        User $actor,
     ): array {
         return collect($rewards)
             ->values()
@@ -241,6 +276,10 @@ class VoucherController extends Controller
                         (int) $reward['server_id'],
                         trim($reward['command']),
                         (bool) $reward['require_online'],
+                    ),
+                    Reward::TYPE_INTERNAL_ROLE => $internalRoles->configuration(
+                        (int) $reward['role_id'],
+                        $actor,
                     ),
                 },
                 'position' => $position,
@@ -259,5 +298,17 @@ class VoucherController extends Controller
         $decimals = rtrim($decimals, '0');
 
         return $decimals === '' ? $units : $units.'.'.$decimals;
+    }
+
+    /**
+     * Resolve the authenticated administrator required by every CRUD route.
+     */
+    private function actor(Request $request): User
+    {
+        $actor = $request->user();
+
+        abort_unless($actor instanceof User, 403);
+
+        return $actor;
     }
 }
