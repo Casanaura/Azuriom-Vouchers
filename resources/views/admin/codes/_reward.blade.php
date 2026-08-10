@@ -7,9 +7,18 @@
     $selectedPackageName = is_string($reward['package_name'] ?? null)
         ? $reward['package_name']
         : '#'.$selectedPackageId;
+    $serverId = filter_var($reward['server_id'] ?? null, FILTER_VALIDATE_INT);
+    $selectedServerId = $serverId === false ? null : (int) $serverId;
+    $selectedServerAvailable = $selectedServerId !== null && $servers->contains('id', $selectedServerId);
+    $selectedServerName = is_string($reward['server_name'] ?? null)
+        ? $reward['server_name']
+        : '#'.$selectedServerId;
+    $rewardCommand = is_scalar($reward['command'] ?? null) ? (string) $reward['command'] : '';
+    $requireOnline = in_array($reward['require_online'] ?? false, [true, 1, '1'], true);
     $knownRewardType = is_string($rewardType) && in_array($rewardType, [
         \Azuriom\Plugin\Vouchers\Models\Reward::TYPE_MONEY,
         \Azuriom\Plugin\Vouchers\Models\Reward::TYPE_SHOP_PACKAGE,
+        \Azuriom\Plugin\Vouchers\Models\Reward::TYPE_SERVER_COMMAND,
     ], true);
 @endphp
 
@@ -43,6 +52,14 @@
                                 — {{ trans('vouchers::admin.rewards.shop_unavailable') }}
                             @elseif($shopPackages->isEmpty())
                                 — {{ trans('vouchers::admin.rewards.package_unavailable') }}
+                            @endif
+                        </option>
+                    @endif
+                    @if($servers->isNotEmpty() || $rewardType === 'server_command')
+                        <option value="server_command" @selected($rewardType === 'server_command')>
+                            {{ trans('vouchers::admin.rewards.types.server_command') }}
+                            @if($servers->isEmpty())
+                                — {{ trans('vouchers::admin.rewards.server_unavailable') }}
                             @endif
                         </option>
                     @endif
@@ -90,6 +107,50 @@
                     <span class="invalid-feedback" role="alert"><strong>{{ $message }}</strong></span>
                 @enderror
                 <div class="form-text">{{ trans('vouchers::admin.help.shop_package') }}</div>
+            </div>
+
+            <div class="col-12" data-reward-fields="server_command" @if($rewardType !== 'server_command') hidden @endif>
+                <div class="row gx-3">
+                    <div class="col-lg-4 mb-3 mb-lg-0">
+                        <label class="form-label" for="rewardServer{{ $index }}">{{ trans('vouchers::admin.rewards.server') }}</label>
+                        <select class="form-select @error('rewards.'.$index.'.server_id') is-invalid @enderror" id="rewardServer{{ $index }}" name="rewards[{{ $index }}][server_id]" data-active-required @disabled($rewardType !== 'server_command') @required($rewardType === 'server_command')>
+                            <option value="">{{ trans('vouchers::admin.rewards.select_server') }}</option>
+                            @if($selectedServerId !== null && ! $selectedServerAvailable)
+                                <option value="{{ $selectedServerId }}" selected>
+                                    {{ $selectedServerName }} — {{ trans('vouchers::admin.rewards.server_unavailable') }}
+                                </option>
+                            @endif
+                            @foreach($servers as $server)
+                                <option value="{{ $server->id }}" @selected($selectedServerId === (int) $server->id)>
+                                    {{ $server->name }} (#{{ $server->id }})
+                                </option>
+                            @endforeach
+                        </select>
+                        @error('rewards.'.$index.'.server_id')
+                            <span class="invalid-feedback" role="alert"><strong>{{ $message }}</strong></span>
+                        @enderror
+                    </div>
+
+                    <div class="col-lg-5 mb-3 mb-lg-0">
+                        <label class="form-label" for="rewardCommand{{ $index }}">{{ trans('vouchers::admin.rewards.command') }}</label>
+                        <input type="text" class="form-control font-monospace @error('rewards.'.$index.'.command') is-invalid @enderror" id="rewardCommand{{ $index }}" name="rewards[{{ $index }}][command]" value="{{ $rewardCommand }}" maxlength="4096" autocomplete="off" data-active-required @disabled($rewardType !== 'server_command') @required($rewardType === 'server_command')>
+                        @error('rewards.'.$index.'.command')
+                            <span class="invalid-feedback" role="alert"><strong>{{ $message }}</strong></span>
+                        @enderror
+                    </div>
+
+                    <div class="col-lg-3">
+                        <label class="form-label" for="rewardOnline{{ $index }}">{{ trans('vouchers::admin.rewards.execution_condition') }}</label>
+                        <select class="form-select @error('rewards.'.$index.'.require_online') is-invalid @enderror" id="rewardOnline{{ $index }}" name="rewards[{{ $index }}][require_online]" data-active-required @disabled($rewardType !== 'server_command') @required($rewardType === 'server_command')>
+                            <option value="0" @selected(! $requireOnline)>{{ trans('vouchers::admin.rewards.conditions.immediate') }}</option>
+                            <option value="1" @selected($requireOnline)>{{ trans('vouchers::admin.rewards.conditions.online') }}</option>
+                        </select>
+                        @error('rewards.'.$index.'.require_online')
+                            <span class="invalid-feedback" role="alert"><strong>{{ $message }}</strong></span>
+                        @enderror
+                    </div>
+                </div>
+                <div class="form-text">{{ trans('vouchers::admin.help.server_command') }}</div>
             </div>
         </div>
     </div>

@@ -37,6 +37,7 @@ return [
         'max_redemptions_per_user' => 'Usa 1 para impedir que la misma cuenta canjee este código más de una vez. Déjalo vacío para permitir canjes ilimitados por cuenta.',
         'requires_authentication' => 'Si se desactiva, los invitados deberán indicar el nombre de una cuenta existente en Azuriom.',
         'shop_package' => 'Se excluyen suscripciones, paquetes con variables obligatorias y giftcards de valor dinámico. Los paquetes deshabilitados siguen disponibles como recompensas ocultas.',
+        'server_command' => 'Usa {player} o {name} para el destinatario. Escribe un solo comando sin / inicial. Esperar al jugador requiere un servidor AzLink.',
     ],
 
     'actions' => [
@@ -57,11 +58,22 @@ return [
         'package_disabled' => 'deshabilitado',
         'shop_unavailable' => 'Shop no disponible',
         'shop_unavailable_help' => 'Este voucher contiene una recompensa de Shop, pero Shop no está habilitado. Habilita Shop o reemplaza la recompensa antes de guardar.',
+        'server' => 'Servidor de juego',
+        'command' => 'Comando',
+        'execution_condition' => 'Condición de ejecución',
+        'select_server' => 'Selecciona un servidor',
+        'server_unavailable' => 'no disponible',
+        'server_unavailable_help' => 'Este voucher apunta a un servidor eliminado o que ya no puede ejecutar comandos. Selecciona otro servidor antes de guardar.',
         'unsupported_type' => 'Tipo no compatible: :type',
         'unsupported_type_unknown' => 'Tipo no compatible',
         'types' => [
             'money' => 'Puntos de Shop',
             'shop_package' => 'Paquete / producto de Shop',
+            'server_command' => 'Comando de servidor (RCON / AzLink)',
+        ],
+        'conditions' => [
+            'immediate' => 'Ejecutar inmediatamente',
+            'online' => 'Esperar a que el jugador esté conectado (solo AzLink)',
         ],
     ],
 
@@ -79,6 +91,10 @@ return [
         'expires_after_start' => 'La fecha de finalización debe ser posterior a la fecha de inicio.',
         'stale_revision' => 'Otro administrador modificó este código. Recarga la página y revisa sus cambios antes de guardar de nuevo.',
         'package_unavailable' => 'El paquete de Shop seleccionado no está disponible o requiere datos no compatibles.',
+        'server_unavailable' => 'El servidor seleccionado no existe o ya no puede ejecutar comandos.',
+        'online_requirement_unavailable' => 'Solo los servidores AzLink pueden esperar a que el jugador esté conectado.',
+        'command_format' => 'Usa un solo comando sin / inicial ni caracteres de control. Solo se admiten las variables {player} y {name}.',
+        'reward_unavailable' => 'Una integración de recompensa cambió mientras se guardaba el voucher. Revisa las recompensas e inténtalo de nuevo.',
     ],
 
     'errors' => [

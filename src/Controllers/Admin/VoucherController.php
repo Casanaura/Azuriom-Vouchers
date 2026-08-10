@@ -6,6 +6,7 @@ use Azuriom\Http\Controllers\Controller;
 use Azuriom\Plugin\Vouchers\Models\Reward;
 use Azuriom\Plugin\Vouchers\Models\Voucher;
 use Azuriom\Plugin\Vouchers\Requests\VoucherRequest;
+use Azuriom\Plugin\Vouchers\Services\ServerCommandCatalog;
 use Azuriom\Plugin\Vouchers\Services\ShopPackageCatalog;
 use Azuriom\Plugin\Vouchers\Services\VoucherCodeGenerator;
 use Illuminate\Contracts\View\View;
@@ -37,8 +38,11 @@ class VoucherController extends Controller
     /**
      * Show the voucher creation form.
      */
-    public function create(VoucherCodeGenerator $generator, ShopPackageCatalog $shopPackages): View
-    {
+    public function create(
+        VoucherCodeGenerator $generator,
+        ShopPackageCatalog $shopPackages,
+        ServerCommandCatalog $serverCommands,
+    ): View {
         return view('vouchers::admin.codes.create', [
             'voucher' => new Voucher([
                 'code' => $generator->generate(),
@@ -51,6 +55,7 @@ class VoucherController extends Controller
             ]],
             'shopAvailable' => $shopPackages->isAvailable(),
             'shopPackages' => $shopPackages->packages(),
+            'servers' => $serverCommands->servers(),
         ]);
     }
 
@@ -59,16 +64,19 @@ class VoucherController extends Controller
      *
      * @throws \Illuminate\Validation\ValidationException
      */
-    public function store(VoucherRequest $request, ShopPackageCatalog $shopPackages): RedirectResponse
-    {
+    public function store(
+        VoucherRequest $request,
+        ShopPackageCatalog $shopPackages,
+        ServerCommandCatalog $serverCommands,
+    ): RedirectResponse {
         try {
-            DB::transaction(function () use ($request, $shopPackages) {
+            DB::transaction(function () use ($request, $shopPackages, $serverCommands) {
                 $data = $request->validated();
                 $rewards = Arr::pull($data, 'rewards');
                 Arr::forget($data, 'revision');
                 $voucher = Voucher::create($data);
 
-                $voucher->rewards()->createMany($this->mapRewards($rewards, $shopPackages));
+                $voucher->rewards()->createMany($this->mapRewards($rewards, $shopPackages, $serverCommands));
             }, 3);
         } catch (UniqueConstraintViolationException) {
             throw ValidationException::withMessages([
@@ -76,7 +84,7 @@ class VoucherController extends Controller
             ]);
         } catch (UnexpectedValueException) {
             throw ValidationException::withMessages([
-                'rewards' => trans('vouchers::admin.validation.package_unavailable'),
+                'rewards' => trans('vouchers::admin.validation.reward_unavailable'),
             ]);
         }
 
@@ -87,8 +95,11 @@ class VoucherController extends Controller
     /**
      * Show the voucher editing form.
      */
-    public function edit(Voucher $voucher, ShopPackageCatalog $shopPackages): View
-    {
+    public function edit(
+        Voucher $voucher,
+        ShopPackageCatalog $shopPackages,
+        ServerCommandCatalog $serverCommands,
+    ): View {
         $voucher->load('rewards');
 
         return view('vouchers::admin.codes.edit', [
@@ -99,6 +110,7 @@ class VoucherController extends Controller
             ])->all(),
             'shopAvailable' => $shopPackages->isAvailable(),
             'shopPackages' => $shopPackages->packages(),
+            'servers' => $serverCommands->servers(),
         ]);
     }
 
@@ -111,9 +123,10 @@ class VoucherController extends Controller
         VoucherRequest $request,
         Voucher $voucher,
         ShopPackageCatalog $shopPackages,
+        ServerCommandCatalog $serverCommands,
     ): RedirectResponse {
         try {
-            DB::transaction(function () use ($request, $voucher, $shopPackages) {
+            DB::transaction(function () use ($request, $voucher, $shopPackages, $serverCommands) {
                 $lockedVoucher = Voucher::query()->lockForUpdate()->findOrFail($voucher->getKey());
                 $data = $request->validated();
                 $rewards = Arr::pull($data, 'rewards');
@@ -130,7 +143,9 @@ class VoucherController extends Controller
                     'revision' => $revision + 1,
                 ])->save();
                 $lockedVoucher->rewards()->delete();
-                $lockedVoucher->rewards()->createMany($this->mapRewards($rewards, $shopPackages));
+                $lockedVoucher->rewards()->createMany(
+                    $this->mapRewards($rewards, $shopPackages, $serverCommands)
+                );
             }, 3);
         } catch (UniqueConstraintViolationException) {
             throw ValidationException::withMessages([
@@ -138,7 +153,7 @@ class VoucherController extends Controller
             ]);
         } catch (UnexpectedValueException) {
             throw ValidationException::withMessages([
-                'rewards' => trans('vouchers::admin.validation.package_unavailable'),
+                'rewards' => trans('vouchers::admin.validation.reward_unavailable'),
             ]);
         }
 
@@ -208,8 +223,11 @@ class VoucherController extends Controller
      * @param  array<int, array<string, mixed>>  $rewards
      * @return array<int, array<string, mixed>>
      */
-    private function mapRewards(array $rewards, ShopPackageCatalog $shopPackages): array
-    {
+    private function mapRewards(
+        array $rewards,
+        ShopPackageCatalog $shopPackages,
+        ServerCommandCatalog $serverCommands,
+    ): array {
         return collect($rewards)
             ->values()
             ->map(fn (array $reward, int $position) => [
@@ -219,6 +237,11 @@ class VoucherController extends Controller
                         'amount' => $this->normalizePointAmount($reward['amount']),
                     ],
                     Reward::TYPE_SHOP_PACKAGE => $shopPackages->configuration((int) $reward['package_id']),
+                    Reward::TYPE_SERVER_COMMAND => $serverCommands->configuration(
+                        (int) $reward['server_id'],
+                        trim($reward['command']),
+                        (bool) $reward['require_online'],
+                    ),
                 },
                 'position' => $position,
             ])

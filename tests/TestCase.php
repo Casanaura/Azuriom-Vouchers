@@ -5,6 +5,8 @@ namespace Azuriom\Plugin\Vouchers\Tests;
 use Azuriom\Http\Controllers\InstallController;
 use Azuriom\Plugin\Shop\Models\Package;
 use Azuriom\Plugin\Vouchers\Services\ShopPackageCatalog;
+use Azuriom\Plugin\Vouchers\Tests\Fakes\RecordingGame;
+use Azuriom\Plugin\Vouchers\Tests\Fakes\RecordingServerBridge;
 use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Application;
@@ -68,11 +70,22 @@ abstract class TestCase extends BaseTestCase
 
         (require dirname(__DIR__, 3).'/database/migrations/2014_10_12_000000_create_users_table.php')->up();
         (require dirname(__DIR__, 3).'/database/migrations/2019_08_15_000000_create_roles_table.php')->up();
+        (require dirname(__DIR__, 3).'/database/migrations/2019_12_03_000000_create_servers_table.php')->up();
+        (require dirname(__DIR__, 3).'/database/migrations/2019_12_06_000000_create_server_commands_table.php')->up();
 
         foreach (glob(dirname(__DIR__).'/database/migrations/*.php') as $migrationPath) {
             $migration = require $migrationPath;
             $migration->up();
         }
+    }
+
+    /**
+     * Expose an executable bridge which records calls without opening a socket.
+     */
+    protected function enableServerIntegration(): void
+    {
+        RecordingServerBridge::reset();
+        $this->app->instance('game', new RecordingGame());
     }
 
     /**

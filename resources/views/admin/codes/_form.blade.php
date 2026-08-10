@@ -7,6 +7,13 @@
 @php($rewards = array_filter($rewards, 'is_array'))
 @php($rewards = $rewards === [] ? $formRewards : $rewards)
 @php
+    $hasUnavailableServer = collect($rewards)->contains(function ($reward) use ($servers) {
+        $serverId = is_array($reward) ? filter_var($reward['server_id'] ?? null, FILTER_VALIDATE_INT) : false;
+
+        return is_array($reward)
+            && ($reward['type'] ?? null) === 'server_command'
+            && ($serverId === false || ! $servers->contains('id', (int) $serverId));
+    });
     $safeOld = static function (string $key, mixed $default = ''): mixed {
         $value = old($key, $default);
 
@@ -110,6 +117,12 @@
 @if(! $shopAvailable && collect($rewards)->contains(fn ($reward) => is_array($reward) && ($reward['type'] ?? null) === 'shop_package'))
     <div class="alert alert-warning" role="alert">
         {{ trans('vouchers::admin.rewards.shop_unavailable_help') }}
+    </div>
+@endif
+
+@if($hasUnavailableServer)
+    <div class="alert alert-warning" role="alert">
+        {{ trans('vouchers::admin.rewards.server_unavailable_help') }}
     </div>
 @endif
 

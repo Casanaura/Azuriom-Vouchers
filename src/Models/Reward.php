@@ -36,6 +36,11 @@ class Reward extends Model
         self::TYPE_SERVER_COMMAND,
     ];
 
+    public const EXTERNAL_TYPES = [
+        self::TYPE_SHOP_PACKAGE,
+        self::TYPE_SERVER_COMMAND,
+    ];
+
     /**
      * The table prefix associated with the model.
      */

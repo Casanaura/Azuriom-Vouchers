@@ -6,7 +6,6 @@ use Azuriom\Plugin\Vouchers\Models\Reward;
 use Azuriom\Plugin\Vouchers\Models\RewardExecution;
 use Azuriom\Plugin\Vouchers\Models\Redemption;
 use Azuriom\Plugin\Vouchers\Services\RewardDeliveryService;
-use Azuriom\Plugin\Vouchers\Services\ShopPackageRewardService;
 use Illuminate\Console\Command;
 
 class ProcessDeliveriesCommand extends Command
@@ -29,7 +28,6 @@ class ProcessDeliveriesCommand extends Command
      * Execute the console command.
      */
     public function handle(
-        ShopPackageRewardService $shopPackages,
         RewardDeliveryService $delivery,
     ): int {
         $cutoff = now()->subMinutes(10);
@@ -38,25 +36,25 @@ class ProcessDeliveriesCommand extends Command
         $repaired = 0;
 
         RewardExecution::query()
-            ->where('type', Reward::TYPE_SHOP_PACKAGE)
+            ->whereIn('type', Reward::EXTERNAL_TYPES)
             ->where('status', RewardExecution::STATUS_PROCESSING)
             ->where(function ($query) use ($cutoff) {
                 $query->whereNull('started_at')->orWhere('started_at', '<=', $cutoff);
             })
-            ->chunkById(100, function ($executions) use ($shopPackages, $cutoff, &$reconciled) {
+            ->chunkById(100, function ($executions) use ($delivery, $cutoff, &$reconciled) {
                 foreach ($executions as $execution) {
-                    if ($shopPackages->reconcileStale($execution, $cutoff)) {
+                    if ($delivery->reconcileDeferredExecution($execution, $cutoff)) {
                         $reconciled++;
                     }
                 }
             });
 
         RewardExecution::query()
-            ->where('type', Reward::TYPE_SHOP_PACKAGE)
+            ->whereIn('type', Reward::EXTERNAL_TYPES)
             ->where('status', RewardExecution::STATUS_PENDING)
-            ->chunkById(100, function ($executions) use ($shopPackages, &$processed) {
+            ->chunkById(100, function ($executions) use ($delivery, &$processed) {
                 foreach ($executions as $execution) {
-                    $shopPackages->deliver($execution);
+                    $delivery->deliverDeferredExecution($execution);
                     $processed++;
                 }
             });

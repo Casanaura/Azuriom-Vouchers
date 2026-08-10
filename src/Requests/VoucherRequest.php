@@ -5,6 +5,7 @@ namespace Azuriom\Plugin\Vouchers\Requests;
 use Azuriom\Http\Requests\Traits\ConvertCheckbox;
 use Azuriom\Plugin\Vouchers\Models\Reward;
 use Azuriom\Plugin\Vouchers\Models\Voucher;
+use Azuriom\Plugin\Vouchers\Services\ServerCommandCatalog;
 use Azuriom\Plugin\Vouchers\Services\ShopPackageCatalog;
 use Carbon\Carbon;
 use Illuminate\Contracts\Validation\Validator;
@@ -33,6 +34,26 @@ class VoucherRequest extends FormRequest
     {
         $this->prepareCheckboxesForValidation();
 
+        $rewards = $this->input('rewards');
+
+        if (is_array($rewards)) {
+            $rewards = collect($rewards)->map(function (mixed $reward) {
+                if (! is_array($reward)) {
+                    return $reward;
+                }
+
+                foreach (['type', 'amount', 'package_id', 'server_id', 'command', 'require_online'] as $key) {
+                    if (array_key_exists($key, $reward)
+                        && ! is_scalar($reward[$key])
+                        && $reward[$key] !== null) {
+                        $reward[$key] = null;
+                    }
+                }
+
+                return $reward;
+            })->all();
+        }
+
         $this->merge([
             'name' => $this->scalarInput('name'),
             'code' => $this->scalarInput('code'),
@@ -41,6 +62,7 @@ class VoucherRequest extends FormRequest
             'max_redemptions_per_user' => $this->optionalScalarInput('max_redemptions_per_user'),
             'starts_at' => $this->optionalScalarInput('starts_at'),
             'expires_at' => $this->optionalScalarInput('expires_at'),
+            'rewards' => $rewards,
         ]);
     }
 
@@ -51,7 +73,7 @@ class VoucherRequest extends FormRequest
      */
     public function rules(): array
     {
-        $rewardTypes = [Reward::TYPE_MONEY];
+        $rewardTypes = [Reward::TYPE_MONEY, Reward::TYPE_SERVER_COMMAND];
 
         if ($this->shopPackages()->isAvailable()) {
             $rewardTypes[] = Reward::TYPE_SHOP_PACKAGE;
@@ -79,6 +101,40 @@ class VoucherRequest extends FormRequest
                 'nullable',
                 'required_if:rewards.*.type,'.Reward::TYPE_SHOP_PACKAGE,
                 'integer', 'min:1', 'max:4294967295',
+            ],
+            'rewards.*.server_id' => [
+                'nullable',
+                'required_if:rewards.*.type,'.Reward::TYPE_SERVER_COMMAND,
+                'integer', 'min:1', 'max:4294967295',
+            ],
+            'rewards.*.command' => [
+                'nullable',
+                'required_if:rewards.*.type,'.Reward::TYPE_SERVER_COMMAND,
+                'string', 'max:4096',
+                function (string $attribute, mixed $value, \Closure $fail) {
+                    if (! is_string($value)) {
+                        return;
+                    }
+
+                    $hasControls = preg_match('/[\x00-\x1F\x7F]/', $value) === 1;
+                    $invalidShape = trim($value) === '' || str_starts_with(trim($value), '/');
+                    $hasUnsupportedPlaceholder = preg_match_all(
+                        '/\{([A-Za-z][A-Za-z0-9_]*)\}/',
+                        $value,
+                        $matches,
+                    ) !== false && collect($matches[1] ?? [])->contains(
+                        fn (string $placeholder) => ! in_array($placeholder, ['player', 'name'], true)
+                    );
+
+                    if ($hasControls || $invalidShape || $hasUnsupportedPlaceholder) {
+                        $fail(trans('vouchers::admin.validation.command_format'));
+                    }
+                },
+            ],
+            'rewards.*.require_online' => [
+                'nullable',
+                'required_if:rewards.*.type,'.Reward::TYPE_SERVER_COMMAND,
+                'boolean',
             ],
         ];
     }
@@ -115,32 +171,89 @@ class VoucherRequest extends FormRequest
                 $validator->errors()->add('expires_at', trans('vouchers::admin.validation.expires_after_start'));
             }
 
-            $shopRewards = collect($this->input('rewards', []))
-                ->filter(fn (mixed $reward) => is_array($reward)
-                    && ($reward['type'] ?? null) === Reward::TYPE_SHOP_PACKAGE);
-
-            if ($shopRewards->isEmpty() || ! $this->shopPackages()->isAvailable()) {
-                return;
-            }
-
-            $eligibleIds = $this->shopPackages()->eligibleIds($shopRewards->pluck('package_id'));
-
-            foreach ($shopRewards as $index => $reward) {
-                $packageId = filter_var($reward['package_id'] ?? null, FILTER_VALIDATE_INT);
-
-                if ($packageId !== false && ! $eligibleIds->contains((int) $packageId)) {
-                    $validator->errors()->add(
-                        'rewards.'.$index.'.package_id',
-                        trans('vouchers::admin.validation.package_unavailable'),
-                    );
-                }
-            }
+            $this->validateShopRewards($validator);
+            $this->validateServerRewards($validator);
         });
+    }
+
+    /**
+     * Confirm that every referenced Shop package still satisfies the integration contract.
+     */
+    private function validateShopRewards(Validator $validator): void
+    {
+        $shopRewards = collect($this->input('rewards', []))
+            ->filter(fn (mixed $reward) => is_array($reward)
+                && ($reward['type'] ?? null) === Reward::TYPE_SHOP_PACKAGE);
+
+        if ($shopRewards->isEmpty() || ! $this->shopPackages()->isAvailable()) {
+            return;
+        }
+
+        $eligibleIds = $this->shopPackages()->eligibleIds($shopRewards->pluck('package_id'));
+
+        foreach ($shopRewards as $index => $reward) {
+            $packageId = filter_var($reward['package_id'] ?? null, FILTER_VALIDATE_INT);
+
+            if ($packageId !== false && ! $eligibleIds->contains((int) $packageId)) {
+                $validator->errors()->add(
+                    'rewards.'.$index.'.package_id',
+                    trans('vouchers::admin.validation.package_unavailable'),
+                );
+            }
+        }
+    }
+
+    /**
+     * Confirm that every server can execute commands and supports the chosen condition.
+     */
+    private function validateServerRewards(Validator $validator): void
+    {
+        $serverRewards = collect($this->input('rewards', []))
+            ->filter(fn (mixed $reward) => is_array($reward)
+                && ($reward['type'] ?? null) === Reward::TYPE_SERVER_COMMAND);
+
+        if ($serverRewards->isEmpty()) {
+            return;
+        }
+
+        $servers = $this->serverCommands()->servers()->keyBy('id');
+
+        foreach ($serverRewards as $index => $reward) {
+            $serverId = filter_var($reward['server_id'] ?? null, FILTER_VALIDATE_INT);
+
+            if ($serverId === false) {
+                continue;
+            }
+
+            $server = $servers->get((int) $serverId);
+
+            if ($server === null) {
+                $validator->errors()->add(
+                    'rewards.'.$index.'.server_id',
+                    trans('vouchers::admin.validation.server_unavailable'),
+                );
+
+                continue;
+            }
+
+            if (filter_var($reward['require_online'] ?? false, FILTER_VALIDATE_BOOL)
+                && ! $this->serverCommands()->supportsOnlineRequirement($server)) {
+                $validator->errors()->add(
+                    'rewards.'.$index.'.require_online',
+                    trans('vouchers::admin.validation.online_requirement_unavailable'),
+                );
+            }
+        }
     }
 
     private function shopPackages(): ShopPackageCatalog
     {
         return app(ShopPackageCatalog::class);
+    }
+
+    private function serverCommands(): ServerCommandCatalog
+    {
+        return app(ServerCommandCatalog::class);
     }
 
     /**

@@ -6,6 +6,7 @@ use Azuriom\Models\User;
 use Azuriom\Plugin\Vouchers\Models\Redemption;
 use Azuriom\Plugin\Vouchers\Models\Reward;
 use Azuriom\Plugin\Vouchers\Models\RewardExecution;
+use Carbon\CarbonInterface;
 use UnexpectedValueException;
 
 class RewardDeliveryService
@@ -13,6 +14,7 @@ class RewardDeliveryService
     public function __construct(
         private readonly PointRewardService $points,
         private readonly ShopPackageRewardService $shopPackages,
+        private readonly ServerCommandRewardService $serverCommands,
         private readonly RedemptionStatusService $redemptionStatuses,
     ) {
     }
@@ -35,6 +37,12 @@ class RewardDeliveryService
             return;
         }
 
+        if ($execution->type === Reward::TYPE_SERVER_COMMAND) {
+            $this->serverCommands->prepare($execution, $redemption, $recipient);
+
+            return;
+        }
+
         throw new UnexpectedValueException('The voucher reward type is not available for redemption.');
     }
 
@@ -49,7 +57,7 @@ class RewardDeliveryService
             return;
         }
 
-        if ($execution->type !== Reward::TYPE_SHOP_PACKAGE) {
+        if (! in_array($execution->type, Reward::EXTERNAL_TYPES, true)) {
             throw new UnexpectedValueException('The voucher reward type is not available for redemption.');
         }
     }
@@ -62,28 +70,49 @@ class RewardDeliveryService
         $cutoff = now()->subMinutes(10);
 
         $redemption->executions()
-            ->where('type', Reward::TYPE_SHOP_PACKAGE)
+            ->whereIn('type', Reward::EXTERNAL_TYPES)
             ->where('status', RewardExecution::STATUS_PROCESSING)
             ->where(function ($query) use ($cutoff) {
                 $query->whereNull('started_at')->orWhere('started_at', '<=', $cutoff);
             })
             ->orderBy('id')
             ->get()
-            ->each(fn (RewardExecution $execution) => $this->shopPackages->reconcileStale($execution, $cutoff));
+            ->each(fn (RewardExecution $execution) => $this->reconcileDeferredExecution($execution, $cutoff));
 
         $redemption->executions()
+            ->whereIn('type', Reward::EXTERNAL_TYPES)
             ->where('status', RewardExecution::STATUS_PENDING)
             ->orderBy('id')
             ->get()
-            ->each(function (RewardExecution $execution) {
-                if ($execution->type === Reward::TYPE_SHOP_PACKAGE) {
-                    $this->shopPackages->deliver($execution);
-                }
-            });
+            ->each(fn (RewardExecution $execution) => $this->deliverDeferredExecution($execution));
 
         $this->refreshRedemptionStatus($redemption);
 
         return $redemption->fresh(['executions', 'user']);
+    }
+
+    /**
+     * Dispatch one pending external execution through its adapter.
+     */
+    public function deliverDeferredExecution(RewardExecution $execution): void
+    {
+        match ($execution->type) {
+            Reward::TYPE_SHOP_PACKAGE => $this->shopPackages->deliver($execution),
+            Reward::TYPE_SERVER_COMMAND => $this->serverCommands->deliver($execution),
+            default => null,
+        };
+    }
+
+    /**
+     * Reconcile one abandoned external execution without repeating its side effect.
+     */
+    public function reconcileDeferredExecution(RewardExecution $execution, CarbonInterface $cutoff): bool
+    {
+        return match ($execution->type) {
+            Reward::TYPE_SHOP_PACKAGE => $this->shopPackages->reconcileStale($execution, $cutoff),
+            Reward::TYPE_SERVER_COMMAND => $this->serverCommands->reconcileStale($execution, $cutoff),
+            default => false,
+        };
     }
 
     /**

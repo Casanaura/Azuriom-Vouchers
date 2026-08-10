@@ -2,6 +2,7 @@
 
 namespace Azuriom\Plugin\Vouchers\Tests\Feature;
 
+use Azuriom\Models\Server;
 use Azuriom\Models\User;
 use Azuriom\Plugin\Shop\Events\PackageDelivered;
 use Azuriom\Plugin\Shop\Events\PaymentPaid;
@@ -13,8 +14,10 @@ use Azuriom\Plugin\Vouchers\Models\Reward;
 use Azuriom\Plugin\Vouchers\Models\RewardExecution;
 use Azuriom\Plugin\Vouchers\Models\Voucher;
 use Azuriom\Plugin\Vouchers\Services\RedeemVoucher;
+use Azuriom\Plugin\Vouchers\Services\ServerCommandRewardService;
 use Azuriom\Plugin\Vouchers\Services\ShopPackageRewardService;
 use Azuriom\Plugin\Vouchers\Tests\TestCase;
+use Azuriom\Plugin\Vouchers\Tests\Fakes\RecordingServerBridge;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
@@ -270,6 +273,288 @@ class RedeemVoucherTest extends TestCase
         $this->assertSame(0.0, $user->fresh()->money);
     }
 
+    public function test_server_command_is_dispatched_once_with_a_rendered_recipient(): void
+    {
+        $this->enableServerIntegration();
+        $user = $this->createUser();
+        $server = $this->createServer('mc-azlink');
+        $voucher = $this->createVoucher(maxPerUser: 2);
+        $voucher->rewards()->create([
+            'type' => Reward::TYPE_SERVER_COMMAND,
+            'configuration' => [
+                'server_id' => $server->id,
+                'server_name' => $server->name,
+                'server_type' => $server->type,
+                'command' => 'give {player} diamond 1',
+                'require_online' => true,
+            ],
+            'position' => 0,
+        ]);
+        $token = (string) Str::uuid();
+
+        $first = app(RedeemVoucher::class)->redeem(
+            'welcome-2026',
+            $user,
+            null,
+            $token,
+            '127.0.0.1',
+        );
+        $repeated = app(RedeemVoucher::class)->redeem(
+            'welcome-2026',
+            $user,
+            null,
+            $token,
+            '127.0.0.1',
+        );
+        $execution = $first->executions->sole();
+
+        $this->assertSame($first->id, $repeated->id);
+        $this->assertSame(Redemption::STATUS_COMPLETED, $first->status);
+        $this->assertSame(RewardExecution::STATUS_DISPATCHED, $execution->status);
+        $this->assertSame(1, $execution->attempts);
+        $this->assertSame('give PlayerOne diamond 1', $execution->configuration['command']);
+        $this->assertCount(1, RecordingServerBridge::$calls);
+        $this->assertSame(['give PlayerOne diamond 1'], RecordingServerBridge::$calls[0]['commands']);
+        $this->assertSame($user->id, RecordingServerBridge::$calls[0]['user_id']);
+        $this->assertTrue(RecordingServerBridge::$calls[0]['require_online']);
+    }
+
+    public function test_server_command_failure_after_dispatch_boundary_is_never_retried(): void
+    {
+        $this->enableServerIntegration();
+        RecordingServerBridge::$throwAfterRecording = true;
+        $user = $this->createUser();
+        $server = $this->createServer();
+        $voucher = $this->createVoucher(maxPerUser: 2);
+        $voucher->rewards()->create([
+            'type' => Reward::TYPE_SERVER_COMMAND,
+            'configuration' => [
+                'server_id' => $server->id,
+                'server_name' => $server->name,
+                'server_type' => $server->type,
+                'command' => 'grant {name} vip',
+                'require_online' => false,
+            ],
+            'position' => 0,
+        ]);
+        $token = (string) Str::uuid();
+
+        $first = app(RedeemVoucher::class)->redeem(
+            'welcome-2026',
+            $user,
+            null,
+            $token,
+            '127.0.0.1',
+        );
+        $repeated = app(RedeemVoucher::class)->redeem(
+            'welcome-2026',
+            $user,
+            null,
+            $token,
+            '127.0.0.1',
+        );
+        $execution = $first->executions->sole();
+
+        $this->assertSame($first->id, $repeated->id);
+        $this->assertSame(Redemption::STATUS_REVIEW_REQUIRED, $first->status);
+        $this->assertSame(RewardExecution::STATUS_UNCERTAIN, $execution->status);
+        $this->assertSame(1, $execution->attempts);
+        $this->assertCount(1, RecordingServerBridge::$calls);
+    }
+
+    public function test_guest_server_command_uses_the_resolved_existing_account(): void
+    {
+        $this->enableServerIntegration();
+        $user = $this->createUser();
+        $server = $this->createServer();
+        $voucher = $this->createVoucher(maxPerUser: 1);
+        $voucher->forceFill(['requires_authentication' => false])->save();
+        $voucher->rewards()->create([
+            'type' => Reward::TYPE_SERVER_COMMAND,
+            'configuration' => [
+                'server_id' => $server->id,
+                'command' => 'grant {player} guest-reward',
+                'require_online' => false,
+            ],
+            'position' => 0,
+        ]);
+
+        $redemption = app(RedeemVoucher::class)->redeem(
+            'welcome-2026',
+            null,
+            'PlayerOne',
+            (string) Str::uuid(),
+            '127.0.0.1',
+        );
+
+        $this->assertSame(Redemption::STATUS_COMPLETED, $redemption->status);
+        $this->assertNull($redemption->redeemer_id);
+        $this->assertSame($user->id, $redemption->user_id);
+        $this->assertSame('PlayerOne', RecordingServerBridge::$calls[0]['username']);
+        $this->assertSame(['grant PlayerOne guest-reward'], RecordingServerBridge::$calls[0]['commands']);
+    }
+
+    public function test_server_removed_before_dispatch_fails_without_crossing_the_boundary(): void
+    {
+        $this->enableServerIntegration();
+        $user = $this->createUser();
+        $server = $this->createServer();
+        $voucher = $this->createVoucher(maxPerUser: 1);
+        $reward = $voucher->rewards()->create([
+            'type' => Reward::TYPE_SERVER_COMMAND,
+            'configuration' => [
+                'server_id' => $server->id,
+                'command' => 'grant {player} vip',
+                'require_online' => false,
+            ],
+            'position' => 0,
+        ]);
+        $redemption = $voucher->redemptions()->create([
+            'user_id' => $user->id,
+            'redeemer_id' => $user->id,
+            'username' => $user->name,
+            'recipient_key' => Redemption::recipientKey($user),
+            'status' => Redemption::STATUS_PROCESSING,
+        ]);
+        $execution = RewardExecution::fromReward($reward);
+        $redemption->executions()->save($execution);
+        $service = app(ServerCommandRewardService::class);
+
+        DB::transaction(function () use ($service, $execution, $redemption, $user) {
+            $service->prepare($execution, $redemption, $user);
+        });
+        $server->delete();
+        $service->deliver($execution->fresh());
+
+        $this->assertSame(RewardExecution::STATUS_FAILED, $execution->fresh()->status);
+        $this->assertSame(0, $execution->fresh()->attempts);
+        $this->assertSame(Redemption::STATUS_FAILED, $redemption->fresh()->status);
+        $this->assertCount(0, RecordingServerBridge::$calls);
+    }
+
+    public function test_unsafe_recipient_name_rolls_back_server_command_reservation(): void
+    {
+        $this->enableServerIntegration();
+        $user = $this->createUser(name: 'Player;op Attacker');
+        $server = $this->createServer();
+        $voucher = $this->createVoucher(maxPerUser: 1);
+        $voucher->rewards()->create([
+            'type' => Reward::TYPE_SERVER_COMMAND,
+            'configuration' => [
+                'server_id' => $server->id,
+                'server_name' => $server->name,
+                'server_type' => $server->type,
+                'command' => 'grant {player} vip',
+                'require_online' => false,
+            ],
+            'position' => 0,
+        ]);
+
+        try {
+            app(RedeemVoucher::class)->redeem(
+                'welcome-2026',
+                $user,
+                null,
+                (string) Str::uuid(),
+                '127.0.0.1',
+            );
+            $this->fail('An unsafe recipient name reached the server bridge.');
+        } catch (VoucherRedemptionException $exception) {
+            $this->assertSame(VoucherRedemptionException::INVALID_CONFIGURATION, $exception->reason);
+        }
+
+        $this->assertSame(0, $voucher->fresh()->redemptions_count);
+        $this->assertSame(0, Redemption::query()->count());
+        $this->assertSame(0, RewardExecution::query()->count());
+        $this->assertCount(0, RecordingServerBridge::$calls);
+    }
+
+    public function test_multiple_server_command_rewards_keep_independent_ordered_attempts(): void
+    {
+        $this->enableServerIntegration();
+        $user = $this->createUser();
+        $server = $this->createServer();
+        $voucher = $this->createVoucher(maxPerUser: 1);
+        $voucher->rewards()->createMany([
+            [
+                'type' => Reward::TYPE_SERVER_COMMAND,
+                'configuration' => [
+                    'server_id' => $server->id,
+                    'command' => 'first {player}',
+                    'require_online' => false,
+                ],
+                'position' => 0,
+            ],
+            [
+                'type' => Reward::TYPE_SERVER_COMMAND,
+                'configuration' => [
+                    'server_id' => $server->id,
+                    'command' => 'second {player}',
+                    'require_online' => false,
+                ],
+                'position' => 1,
+            ],
+        ]);
+
+        $redemption = app(RedeemVoucher::class)->redeem(
+            'welcome-2026',
+            $user,
+            null,
+            (string) Str::uuid(),
+            '127.0.0.1',
+        );
+
+        $this->assertSame(Redemption::STATUS_COMPLETED, $redemption->status);
+        $this->assertSame(
+            [['first PlayerOne'], ['second PlayerOne']],
+            array_column(RecordingServerBridge::$calls, 'commands'),
+        );
+        $this->assertTrue($redemption->executions->every(
+            fn (RewardExecution $execution) => $execution->status === RewardExecution::STATUS_DISPATCHED
+        ));
+    }
+
+    public function test_interrupted_server_command_claim_becomes_uncertain_without_dispatch(): void
+    {
+        $this->enableServerIntegration();
+        $user = $this->createUser();
+        $server = $this->createServer();
+        $voucher = $this->createVoucher(maxPerUser: 1);
+        $reward = $voucher->rewards()->create([
+            'type' => Reward::TYPE_SERVER_COMMAND,
+            'configuration' => [
+                'server_id' => $server->id,
+                'command' => 'grant {player} vip',
+                'require_online' => false,
+            ],
+            'position' => 0,
+        ]);
+        $redemption = $voucher->redemptions()->create([
+            'user_id' => $user->id,
+            'redeemer_id' => $user->id,
+            'username' => $user->name,
+            'recipient_key' => Redemption::recipientKey($user),
+            'status' => Redemption::STATUS_PROCESSING,
+        ]);
+        $execution = RewardExecution::fromReward($reward);
+        $redemption->executions()->save($execution);
+        $service = app(ServerCommandRewardService::class);
+
+        DB::transaction(function () use ($service, $execution, $redemption, $user) {
+            $service->prepare($execution, $redemption, $user);
+        });
+        $execution->forceFill([
+            'status' => RewardExecution::STATUS_PROCESSING,
+            'attempts' => 1,
+            'started_at' => null,
+        ])->save();
+
+        $this->assertTrue($service->reconcileStale($execution->fresh(), now()->subMinutes(10)));
+        $this->assertSame(RewardExecution::STATUS_UNCERTAIN, $execution->fresh()->status);
+        $this->assertSame(Redemption::STATUS_REVIEW_REQUIRED, $redemption->fresh()->status);
+        $this->assertCount(0, RecordingServerBridge::$calls);
+    }
+
     public function test_per_user_limit_rejects_a_new_redemption_request(): void
     {
         $user = $this->createUser();
@@ -379,11 +664,24 @@ class RedeemVoucherTest extends TestCase
             'password' => 'not-used-in-tests',
             'role_id' => 1,
             'money' => 0,
+            'game_id' => 'player-'.$id,
             'created_at' => now(),
             'updated_at' => now(),
         ]);
 
         return User::query()->findOrFail($id);
+    }
+
+    private function createServer(string $type = 'recording-server'): Server
+    {
+        return Server::create([
+            'name' => 'Voucher server',
+            'address' => '127.0.0.1',
+            'port' => 25565,
+            'type' => $type,
+            'token' => 'test-token',
+            'data' => [],
+        ]);
     }
 
     private function createVoucher(int $maxPerUser, string $code = 'WELCOME-2026'): Voucher

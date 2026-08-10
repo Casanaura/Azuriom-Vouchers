@@ -37,6 +37,7 @@ return [
         'max_redemptions_per_user' => 'Use 1 to prevent the same account from redeeming this code more than once. Leave blank for unlimited redemptions per account.',
         'requires_authentication' => 'When disabled, guests must provide the name of an existing Azuriom account.',
         'shop_package' => 'Subscriptions, packages with required variables and dynamic-value gift cards are excluded. Disabled packages remain available as hidden rewards.',
+        'server_command' => 'Use {player} or {name} for the recipient. Write one command without a leading slash. Waiting for the player requires an AzLink server.',
     ],
 
     'actions' => [
@@ -57,11 +58,22 @@ return [
         'package_disabled' => 'disabled',
         'shop_unavailable' => 'Shop unavailable',
         'shop_unavailable_help' => 'This voucher contains a Shop reward, but Shop is not enabled. Enable Shop or replace the reward before saving.',
+        'server' => 'Game server',
+        'command' => 'Command',
+        'execution_condition' => 'Execution condition',
+        'select_server' => 'Select a server',
+        'server_unavailable' => 'unavailable',
+        'server_unavailable_help' => 'This voucher points to a deleted server or one that can no longer execute commands. Select another server before saving.',
         'unsupported_type' => 'Unsupported type: :type',
         'unsupported_type_unknown' => 'Unsupported type',
         'types' => [
             'money' => 'Shop points',
             'shop_package' => 'Shop package / product',
+            'server_command' => 'Server command (RCON / AzLink)',
+        ],
+        'conditions' => [
+            'immediate' => 'Execute immediately',
+            'online' => 'Wait until the player is online (AzLink only)',
         ],
     ],
 
@@ -79,6 +91,10 @@ return [
         'expires_after_start' => 'The end date must be later than the start date.',
         'stale_revision' => 'This voucher was changed by another administrator. Reload the page and review their changes before saving again.',
         'package_unavailable' => 'The selected Shop package is unavailable or requires unsupported input.',
+        'server_unavailable' => 'The selected server does not exist or can no longer execute commands.',
+        'online_requirement_unavailable' => 'Only AzLink servers can wait until the player is online.',
+        'command_format' => 'Use one command without a leading slash or control characters. Only {player} and {name} placeholders are supported.',
+        'reward_unavailable' => 'A selected reward integration changed while the voucher was being saved. Review the rewards and try again.',
     ],
 
     'errors' => [
