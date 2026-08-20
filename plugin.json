@@ -2,7 +2,7 @@
     "id": "vouchers",
     "name": "Vouchers",
     "description": "Create redeemable codes that grant one or more rewards to Azuriom users.",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "url": "https://github.com/Casanaura/Azuriom-Vouchers",
     "authors": [
         "Zibuu",

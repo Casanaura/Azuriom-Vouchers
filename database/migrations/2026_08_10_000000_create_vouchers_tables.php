@@ -22,6 +22,7 @@ return new class extends Migration
             $table->unsignedInteger('max_redemptions')->nullable();
             $table->unsignedInteger('max_redemptions_per_user')->nullable();
             $table->unsignedInteger('redemptions_count')->default(0);
+            $table->unsignedInteger('revision')->default(1);
             $table->timestamp('starts_at')->nullable();
             $table->timestamp('expires_at')->nullable();
             $table->timestamps();
@@ -48,6 +49,8 @@ return new class extends Migration
         Schema::create('vouchers_redemptions', function (Blueprint $table) {
             $table->increments('id');
             $table->uuid('uuid')->unique();
+            $table->uuid('request_token')->nullable()->unique();
+            $table->char('request_fingerprint', 64)->nullable();
             $table->unsignedInteger('voucher_id');
             $table->unsignedInteger('user_id')->nullable();
             $table->unsignedInteger('redeemer_id')->nullable();
@@ -75,6 +78,7 @@ return new class extends Migration
             $table->index(['voucher_id', 'recipient_key', 'status']);
             $table->index('user_id');
             $table->index('redeemer_id');
+            $table->index('status', 'vouchers_redemptions_status_index');
         });
 
         Schema::create('vouchers_reward_executions', function (Blueprint $table) {
@@ -85,6 +89,8 @@ return new class extends Migration
             $table->string('type', 32);
             $table->json('configuration');
             $table->string('status', 20);
+            $table->unsignedSmallInteger('attempts')->default(0);
+            $table->string('external_reference', 100)->nullable()->unique();
             $table->text('error')->nullable();
             $table->timestamp('started_at')->nullable();
             $table->timestamp('finished_at')->nullable();
@@ -102,6 +108,10 @@ return new class extends Migration
             $table->index(['redemption_id', 'status']);
             $table->index('reward_id');
             $table->index('status');
+            $table->index(
+                ['type', 'status', 'started_at'],
+                'vouchers_executions_delivery_index',
+            );
         });
     }
 
